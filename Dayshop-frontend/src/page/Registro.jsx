@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
+import { ROL_CLIENTE, USERS_STORAGE_KEY } from '../data/usuarios.js'
 
-const USERS_STORAGE_KEY = 'dayshop:users:v1'
 const PBKDF2_ITERATIONS = 210_000
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 const NAME_PATTERN = /^[\p{L}\s.'-]+$/u
@@ -123,6 +123,7 @@ async function registerUser(values) {
     nombreCompleto: values.nombreCompleto.trim(),
     email: normalizedEmail,
     telefono: values.telefono.trim(),
+    rol: ROL_CLIENTE,
   }
   const encryptedProfile = await crypto.subtle.encrypt(
     { name: 'AES-GCM', iv },
@@ -209,7 +210,7 @@ function FormField({
   )
 }
 
-function Registro({ onRegistered }) {
+function Registro({ onRegistered, onGoToLogin }) {
   const [form, setForm] = useState({
     nombreCompleto: '',
     email: '',
@@ -421,6 +422,19 @@ function Registro({ onRegistered }) {
         <p className="mt-6 text-center text-xs leading-5 text-slate-500">
           Tus datos personales se cifran con AES-GCM antes de guardarse en este navegador.
         </p>
+
+        {onGoToLogin ? (
+          <p className="mt-4 text-center text-sm text-slate-600">
+            ¿Ya tienes cuenta?{' '}
+            <button
+              type="button"
+              onClick={onGoToLogin}
+              className="font-bold text-indigo-600 transition hover:text-indigo-800"
+            >
+              Inicia sesión
+            </button>
+          </p>
+        ) : null}
       </section>
     </main>
   )
