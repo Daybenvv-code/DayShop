@@ -352,7 +352,7 @@ function Login({ onLoggedIn, onGoToRegister }) {
             </div>
           </div>
           <p className="mt-4 text-sm leading-6 text-slate-600">
-            Accede a tu cuenta para revisar y gestionar tus compras de forma segura.
+            Accede a tu cuenta para revisar y gestionar tus compras.
           </p>
         </header>
 
