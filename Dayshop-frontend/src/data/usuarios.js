@@ -14,6 +14,20 @@ const ADMIN_USER = {
   createdAt: '2026-10-25T19:13:22.482Z',
 }
 
+const ADMIN_USER_2 = {
+  id: 'admin-dayshop-2',
+  emailHash: '88zP4WaB3LYZ6NVm21TfbpXiNDGiY1BJ8XHZvsnANog=',
+  salt: '3xr9FXOlQh7P4CkNPuF50Q==',
+  iterations: 210000,
+  authHash: 'v5hdU0+IQA6/PNv2FfBDvz5e0pWhYLZSQ2sv+xKYmfg=',
+  iv: 'c1ViBOmN2NrkJVIB',
+  profile:
+    'HRUCzv0M8zgityCL0PXQQvccUSk9lQ1LBCGvHESLVvNqp5XoLmhFwF6N11TKqv4/+epM3bApAcxxmSc3TVviL8BqFwR1KqzZZHZHP2jNBlZDuouaw1BFO1MFY9KOp5HPtvnpecApxqnjMGTUr6JgoWzUMid5x1nwPXV2exrTYTGCOCX4ug==',
+  createdAt: '2026-10-31T00:00:00.000Z',
+}
+
+const ADMIN_USERS = [ADMIN_USER, ADMIN_USER_2]
+
 function leerUsuarios() {
   try {
     const raw = localStorage.getItem(USERS_STORAGE_KEY)
@@ -36,15 +50,16 @@ export function esAdministrador(session) {
 export function asegurarAdministrador() {
   try {
     const usuarios = leerUsuarios()
-    const existe = usuarios.some(
-      (usuario) => usuario?.emailHash === ADMIN_USER.emailHash,
+    const existentes = new Set(usuarios.map((usuario) => usuario?.emailHash))
+    const faltantes = ADMIN_USERS.filter(
+      (admin) => !existentes.has(admin.emailHash),
     )
 
-    if (existe) return
+    if (faltantes.length === 0) return
 
     localStorage.setItem(
       USERS_STORAGE_KEY,
-      JSON.stringify([...usuarios, ADMIN_USER]),
+      JSON.stringify([...usuarios, ...faltantes]),
     )
   } catch {
     return
