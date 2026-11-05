@@ -149,6 +149,14 @@ function ProductoDetalle({ productoId, onBack }) {
               ) : null}
             </div>
 
+            {alcanzoStock ? (
+              <p role="alert" className="mt-2 text-sm font-semibold text-amber-700">
+                Alcanzaste el límite de stock disponible ({producto.stock}{' '}
+                {producto.stock === 1 ? 'unidad' : 'unidades'}). No puedes
+                agregar más a tu carrito.
+              </p>
+            ) : null}
+
             {errorCarrito ? (
               <p role="alert" className="mt-2 text-sm text-red-600">
                 {errorCarrito}

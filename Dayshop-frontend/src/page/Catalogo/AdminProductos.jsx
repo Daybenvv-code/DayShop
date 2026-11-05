@@ -8,6 +8,10 @@ import {
   obtenerCategoria,
   useProductos,
 } from '../../data/productos.js'
+import {
+  parsearEspecificaciones,
+  validateProducto,
+} from '../../../shared/catalog.js'
 
 const FORM_INICIAL = {
   titulo: '',
@@ -19,24 +23,12 @@ const FORM_INICIAL = {
   imagen: '',
 }
 
-function parsearEspecificaciones(texto) {
-  return texto
-    .split('\n')
-    .reduce((especificaciones, linea) => {
-      const [clave, ...resto] = linea.split(':')
-      const nombre = clave.trim()
-      const valor = resto.join(':').trim()
-
-      if (nombre && valor) especificaciones[nombre] = valor
-      return especificaciones
-    }, {})
-}
-
 function AdminProductos({ onBack }) {
   const productos = useProductos()
   const [form, setForm] = useState(FORM_INICIAL)
   const [editingId, setEditingId] = useState(null)
   const [mensaje, setMensaje] = useState(null)
+  const [guardando, setGuardando] = useState(false)
 
   function resetForm() {
     setForm(FORM_INICIAL)
@@ -66,59 +58,39 @@ function AdminProductos({ onBack }) {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault()
 
-    const titulo = form.titulo.trim()
-    const precio = Number(form.precio)
-    const stock = Number(form.stock)
-
-    if (!titulo) {
-      setMensaje({ tipo: 'error', texto: 'El título del producto es obligatorio.' })
-      return
-    }
-
-    if (!Number.isFinite(precio) || precio <= 0) {
-      setMensaje({ tipo: 'error', texto: 'Ingresa un precio mayor a cero.' })
-      return
-    }
-
-    if (!Number.isInteger(stock) || stock < 0) {
-      setMensaje({
-        tipo: 'error',
-        texto: 'El stock debe ser un número entero igual o mayor a cero.',
-      })
-      return
-    }
-
-    if (!form.descripcion.trim()) {
-      setMensaje({
-        tipo: 'error',
-        texto: 'La descripción es obligatoria para la vista de detalle.',
-      })
-      return
-    }
-
     const datos = {
-      titulo,
+      titulo: form.titulo.trim(),
       categoria: form.categoria,
-      precio,
-      stock,
+      precio: Number(form.precio),
+      stock: Number(form.stock),
       descripcion: form.descripcion.trim(),
       especificaciones: parsearEspecificaciones(form.especificaciones),
     }
 
     if (form.imagen.trim()) datos.imagen = form.imagen.trim()
 
+    const errores = validateProducto(datos)
+    const primerError = Object.values(errores)[0]
+
+    if (primerError) {
+      setMensaje({ tipo: 'error', texto: primerError })
+      return
+    }
+
+    setGuardando(true)
+
     try {
       if (editingId) {
-        actualizarProducto(editingId, datos)
+        await actualizarProducto(editingId, datos)
         setMensaje({
           tipo: 'success',
           texto: 'Producto actualizado. El catálogo ya refleja los cambios.',
         })
       } else {
-        crearProducto(datos)
+        await crearProducto(datos)
         setMensaje({
           tipo: 'success',
           texto: 'Producto agregado. El catálogo ya refleja los cambios.',
@@ -131,17 +103,19 @@ function AdminProductos({ onBack }) {
         tipo: 'error',
         texto: error.message || 'No se pudo guardar el producto.',
       })
+    } finally {
+      setGuardando(false)
     }
   }
 
-  function handleDelete(producto) {
+  async function handleDelete(producto) {
     const confirmado = window.confirm(
       `¿Eliminar "${producto.titulo}" del catálogo?`,
     )
     if (!confirmado) return
 
     try {
-      eliminarProducto(producto.id)
+      await eliminarProducto(producto.id)
       if (editingId === producto.id) resetForm()
       setMensaje({
         tipo: 'success',
@@ -193,7 +167,7 @@ function AdminProductos({ onBack }) {
           </h1>
           <p className="mt-1 text-sm leading-6 text-slate-600">
             Agrega, edita precios o actualiza el stock. El catálogo se actualiza
-            automáticamente, incluso si está abierto en otra pestaña.
+            automáticamente en todos los dispositivos conectados.
           </p>
         </div>
 
@@ -380,9 +354,14 @@ function AdminProductos({ onBack }) {
 
               <button
                 type="submit"
-                className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/25 transition hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-200"
+                disabled={guardando}
+                className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/25 transition hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-200 disabled:cursor-not-allowed disabled:bg-slate-300"
               >
-                {editingId ? 'Guardar cambios' : 'Agregar al catálogo'}
+                {guardando
+                  ? 'Guardando...'
+                  : editingId
+                    ? 'Guardar cambios'
+                    : 'Agregar al catálogo'}
               </button>
             </form>
           </section>

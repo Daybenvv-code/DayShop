@@ -1,135 +1,159 @@
-import { useSyncExternalStore } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
+import { normalizarDireccion } from '../../shared/direcciones.js'
+import {
+  crearDireccion as crearDireccionApi,
+  eliminarDireccion as eliminarDireccionApi,
+  listarDirecciones,
+} from './direccionesApi.js'
 
-export const DIRECCIONES_STORAGE_KEY = 'dayshop:direcciones:v1'
-const DIRECCIONES_EVENT = 'dayshop:direcciones-updated'
 const SIN_DIRECCIONES = []
-
-let cacheDirecciones = null
-
-function esDireccionValida(direccion) {
-  return (
-    direccion &&
-    typeof direccion === 'object' &&
-    typeof direccion.id === 'string' &&
-    typeof direccion.direccion === 'string' &&
-    typeof direccion.referencia === 'string' &&
-    typeof direccion.ciudad === 'string' &&
-    typeof direccion.celular === 'string'
-  )
+const ESTADO_INICIAL = {
+  userId: null,
+  direcciones: SIN_DIRECCIONES,
+  cargando: false,
+  cargado: false,
+  error: '',
 }
 
-function normalizarDireccion(direccion) {
-  return {
-    id: direccion.id,
-    alias: typeof direccion.alias === 'string' ? direccion.alias : '',
-    direccion: direccion.direccion,
-    referencia: direccion.referencia,
-    ciudad: direccion.ciudad,
-    celular: direccion.celular,
-    creadaEn: typeof direccion.creadaEn === 'string' ? direccion.creadaEn : '',
-  }
+let estado = ESTADO_INICIAL
+let peticion = null
+let solicitudId = 0
+const listeners = new Set()
+
+function emitir() {
+  for (const listener of listeners) listener()
 }
 
-function leerTodas() {
-  try {
-    const raw = localStorage.getItem(DIRECCIONES_STORAGE_KEY)
-    if (!raw) return {}
-
-    const parsed = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed
-      : {}
-  } catch {
-    return {}
-  }
+function actualizar(cambios) {
+  estado = { ...estado, ...cambios }
+  emitir()
 }
 
-function construirCache() {
-  const resultado = {}
-
-  for (const [userId, lista] of Object.entries(leerTodas())) {
-    if (Array.isArray(lista)) {
-      resultado[userId] = lista
-        .filter(esDireccionValida)
-        .map(normalizarDireccion)
-    }
-  }
-
-  return resultado
-}
-
-function getCache() {
-  if (!cacheDirecciones) cacheDirecciones = construirCache()
-  return cacheDirecciones
+function listaDe(userId) {
+  return estado.userId === userId ? estado.direcciones : SIN_DIRECCIONES
 }
 
 export function getDirecciones(userId) {
-  return getCache()[userId] ?? SIN_DIRECCIONES
+  return listaDe(userId)
 }
 
-function persistir(todas) {
-  try {
-    localStorage.setItem(DIRECCIONES_STORAGE_KEY, JSON.stringify(todas))
-  } catch {
-    throw new Error('No se pudo guardar la dirección en este navegador.')
+export async function cargarDirecciones(userId, { force = false } = {}) {
+  if (!userId) return SIN_DIRECCIONES
+
+  if (!force && estado.userId === userId && estado.cargando) return peticion
+  if (!force && estado.userId === userId && estado.cargado) {
+    return estado.direcciones
   }
 
-  cacheDirecciones = null
-  window.dispatchEvent(new Event(DIRECCIONES_EVENT))
-}
-
-export function guardarDireccion(userId, datos) {
-  const direccion = {
-    id: crypto.randomUUID?.() ?? `direccion-${Date.now()}`,
-    alias: (datos.alias ?? '').trim(),
-    direccion: datos.direccion.trim(),
-    referencia: datos.referencia.trim(),
-    ciudad: datos.ciudad,
-    celular: datos.celular.trim(),
-    creadaEn: new Date().toISOString(),
-  }
-
-  persistir({
-    ...getCache(),
-    [userId]: [direccion, ...getDirecciones(userId)],
+  actualizar({
+    userId,
+    direcciones: estado.userId === userId ? estado.direcciones : SIN_DIRECCIONES,
+    cargando: true,
+    error: '',
   })
 
+  const id = ++solicitudId
+
+  peticion = listarDirecciones()
+    .then((data) => {
+      const direcciones = Array.isArray(data?.direcciones)
+        ? data.direcciones
+        : []
+
+      if (id === solicitudId && estado.userId === userId) {
+        actualizar({
+          userId,
+          direcciones,
+          cargando: false,
+          cargado: true,
+          error: '',
+        })
+      }
+
+      return direcciones
+    })
+    .catch((error) => {
+      if (id === solicitudId && estado.userId === userId) {
+        actualizar({
+          userId,
+          cargando: false,
+          cargado: false,
+          error:
+            error?.message ||
+            'No se pudieron cargar las direcciones guardadas.',
+        })
+      }
+
+      throw error
+    })
+    .finally(() => {
+      if (id === solicitudId) peticion = null
+    })
+
+  return peticion
+}
+
+export async function guardarDireccion(userId, datos) {
+  const data = await crearDireccionApi(normalizarDireccion(datos))
+  const direccion = data?.direccion
+
+  if (!direccion) {
+    throw new Error('El servidor no devolvió la dirección guardada.')
+  }
+
+  const direcciones = [
+    direccion,
+    ...listaDe(userId).filter((item) => item.id !== direccion.id),
+  ]
+
+  actualizar({ userId, direcciones, cargado: true, error: '' })
   return direccion
 }
 
-export function eliminarDireccion(userId, direccionId) {
-  persistir({
-    ...getCache(),
-    [userId]: getDirecciones(userId).filter(
+export async function eliminarDireccion(userId, direccionId) {
+  await eliminarDireccionApi(direccionId)
+
+  actualizar({
+    userId,
+    direcciones: listaDe(userId).filter(
       (direccion) => direccion.id !== direccionId,
     ),
   })
 }
 
+export function limpiarDirecciones() {
+  solicitudId += 1
+  estado = ESTADO_INICIAL
+  peticion = null
+  emitir()
+}
+
 export function subscribeDirecciones(listener) {
-  function invalidar() {
-    cacheDirecciones = null
-    listener()
-  }
+  listeners.add(listener)
+  return () => listeners.delete(listener)
+}
 
-  function handleStorage(event) {
-    if (event.key !== DIRECCIONES_STORAGE_KEY && event.key !== null) return
-    invalidar()
-  }
+export function useDireccionesEstado(userId) {
+  const snapshot = useSyncExternalStore(
+    subscribeDirecciones,
+    () => estado,
+    () => estado,
+  )
 
-  window.addEventListener(DIRECCIONES_EVENT, invalidar)
-  window.addEventListener('storage', handleStorage)
+  useEffect(() => {
+    if (!userId) return
+    cargarDirecciones(userId).catch(() => {})
+  }, [userId])
 
-  return () => {
-    window.removeEventListener(DIRECCIONES_EVENT, invalidar)
-    window.removeEventListener('storage', handleStorage)
+  const propio = snapshot.userId === userId
+
+  return {
+    direcciones: propio ? snapshot.direcciones : SIN_DIRECCIONES,
+    cargando: propio ? snapshot.cargando : false,
+    error: propio ? snapshot.error : '',
   }
 }
 
 export function useDirecciones(userId) {
-  return useSyncExternalStore(
-    subscribeDirecciones,
-    () => getDirecciones(userId),
-    () => SIN_DIRECCIONES,
-  )
+  return useDireccionesEstado(userId).direcciones
 }

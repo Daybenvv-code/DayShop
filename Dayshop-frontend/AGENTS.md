@@ -4,8 +4,9 @@
 
 Dayshop frontend: a Vite 8 + React 19 single-page app using Tailwind CSS v4.
 Entry point is `src/main.jsx` -> `src/App.jsx`. There is no router, state
-library, backend client, or test suite yet. `README.md` is the stock Vite
-template and does not describe this app.
+library, or test suite yet. A dependency-free Node API lives in `server/` and
+is mounted into the Vite dev and preview servers by `vite.config.js`.
+`README.md` is the stock Vite template and does not describe this app.
 
 ## Commands
 
@@ -13,7 +14,8 @@ template and does not describe this app.
 - `npm run dev` — Vite dev server with HMR.
 - `npm run lint` — ESLint flat config, checks `**/*.{js,jsx}` only.
 - `npm run build` — production build to `dist/` (gitignored).
-- `npm run preview` — serve the production build.
+- `npm run preview` — serve the production build (API included).
+- `npm start` — standalone Node server for the API and `dist/` (run `npm run build` first).
 
 No test runner is configured; verify changes with `npm run lint` and
 `npm run build` instead of guessing a test command.
@@ -31,6 +33,13 @@ No test runner is configured; verify changes with `npm run lint` and
 
 - JavaScript/JSX only: TypeScript is not configured, and ESLint does not
   typecheck.
+- Backend user accounts are stored in `server/data/users.json`, the product
+  catalog in `server/data/productos.json`, and per-user shipping addresses in
+  `server/data/direcciones.json` (all gitignored). Shared user validation lives
+  in `shared/validation.js`; shared catalog data, product normalization, and
+  product validation live in `shared/catalog.js`; shared address validation and
+  shipping messages live in `shared/direcciones.js` and `shared/mensajes.js`,
+  and run on both client and server.
 - The Git repository root is the parent directory
   `C:\Users\ARDEY\Documents`, which also contains unrelated folders. Running Git
   from this folder sees those files, so stage explicit paths and never

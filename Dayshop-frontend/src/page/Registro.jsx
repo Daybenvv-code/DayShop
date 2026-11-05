@@ -1,158 +1,17 @@
 import { useRef, useState } from 'react'
-import { ROL_CLIENTE, USERS_STORAGE_KEY } from '../data/usuarios.js'
+import {
+  ApiError,
+  checkEmailAvailability,
+  registerUser,
+} from '../data/authApi.js'
+import {
+  getRegistrationFieldError,
+  MIN_PASSWORD_LENGTH,
+  normalizeEmail,
+  REGISTRATION_FIELDS,
+} from '../../shared/validation.js'
 
-const PBKDF2_ITERATIONS = 210_000
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
-const NAME_PATTERN = /^[\p{L}\s.'-]+$/u
-const PHONE_PATTERN = /^\+?[\d\s()-]{7,20}$/
-const FIELDS = ['nombreCompleto', 'email', 'telefono', 'password']
-const encoder = new TextEncoder()
-
-function normalizeEmail(value) {
-  return value.trim().toLowerCase()
-}
-
-function getFieldError(name, value) {
-  const trimmed = value.trim()
-
-  if (name === 'nombreCompleto') {
-    if (!trimmed) return 'El nombre completo es obligatorio.'
-    if (trimmed.length < 3) return 'Ingresa al menos 3 caracteres.'
-    if (!NAME_PATTERN.test(trimmed)) {
-      return 'Usa solo letras, espacios, puntos, guiones o apóstrofes.'
-    }
-    return ''
-  }
-
-  if (name === 'email') {
-    if (!trimmed) return 'El correo electrónico es obligatorio.'
-    if (!EMAIL_PATTERN.test(trimmed)) return 'Ingresa un correo electrónico válido.'
-    return ''
-  }
-
-  if (name === 'telefono') {
-    if (!trimmed) return 'El teléfono es obligatorio.'
-    const digits = trimmed.replace(/\D/g, '')
-    if (!PHONE_PATTERN.test(trimmed) || digits.length < 7 || digits.length > 15) {
-      return 'Ingresa un teléfono válido de 7 a 15 dígitos.'
-    }
-    return ''
-  }
-
-  if (name === 'password') {
-    if (!value) return 'La contraseña es obligatoria.'
-    if (value.length < 12) return 'La contraseña debe tener al menos 12 caracteres.'
-    return ''
-  }
-
-  return ''
-}
-
-function bytesToBase64(bytes) {
-  let binary = ''
-  for (const byte of bytes) binary += String.fromCharCode(byte)
-  return btoa(binary)
-}
-
-async function digestBase64(value) {
-  const data = typeof value === 'string' ? encoder.encode(value) : value
-  const digest = await crypto.subtle.digest('SHA-256', data)
-  return bytesToBase64(new Uint8Array(digest))
-}
-
-async function derivePasswordKey(password, salt, iterations) {
-  const baseKey = await crypto.subtle.importKey(
-    'raw',
-    encoder.encode(password),
-    'PBKDF2',
-    false,
-    ['deriveBits'],
-  )
-  const bits = await crypto.subtle.deriveBits(
-    { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
-    baseKey,
-    256,
-  )
-  return new Uint8Array(bits)
-}
-
-function readUsers() {
-  try {
-    const raw = localStorage.getItem(USERS_STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed)
-      ? parsed.filter((user) => user && typeof user.emailHash === 'string')
-      : []
-  } catch {
-    return []
-  }
-}
-
-async function isEmailAvailable(email) {
-  const emailHash = await digestBase64(normalizeEmail(email))
-  return !readUsers().some((user) => user.emailHash === emailHash)
-}
-
-async function registerUser(values) {
-  if (!globalThis.crypto?.subtle) {
-    throw new Error('Tu navegador no permite cifrar los datos. Usa un navegador actualizado.')
-  }
-
-  const normalizedEmail = normalizeEmail(values.email)
-  const emailHash = await digestBase64(normalizedEmail)
-
-  if (readUsers().some((user) => user.emailHash === emailHash)) {
-    const error = new Error('Este correo ya está registrado.')
-    error.code = 'EMAIL_TAKEN'
-    throw error
-  }
-
-  const salt = crypto.getRandomValues(new Uint8Array(16))
-  const passwordKey = await derivePasswordKey(values.password, salt, PBKDF2_ITERATIONS)
-  const authHash = await digestBase64(passwordKey)
-  const aesKey = await crypto.subtle.importKey(
-    'raw',
-    passwordKey,
-    { name: 'AES-GCM' },
-    false,
-    ['encrypt'],
-  )
-  const iv = crypto.getRandomValues(new Uint8Array(12))
-  const profile = {
-    nombreCompleto: values.nombreCompleto.trim(),
-    email: normalizedEmail,
-    telefono: values.telefono.trim(),
-    rol: ROL_CLIENTE,
-  }
-  const encryptedProfile = await crypto.subtle.encrypt(
-    { name: 'AES-GCM', iv },
-    aesKey,
-    encoder.encode(JSON.stringify(profile)),
-  )
-
-  const user = {
-    id: crypto.randomUUID?.() ?? `user-${Date.now()}`,
-    emailHash,
-    salt: bytesToBase64(salt),
-    iterations: PBKDF2_ITERATIONS,
-    authHash,
-    iv: bytesToBase64(iv),
-    profile: bytesToBase64(new Uint8Array(encryptedProfile)),
-    createdAt: new Date().toISOString(),
-  }
-
-  const users = readUsers()
-  users.push(user)
-
-  try {
-    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users))
-  } catch {
-    throw new Error('No se pudo guardar la cuenta en este navegador.')
-  }
-
-  return { id: user.id, ...profile }
-}
+const FIELDS = REGISTRATION_FIELDS
 
 function FormField({
   id,
@@ -225,7 +84,8 @@ function Registro({ onRegistered, onGoToLogin }) {
   const latestEmail = useRef('')
 
   const isFormValid =
-    FIELDS.every((name) => !getFieldError(name, form[name])) && !emailTaken
+    FIELDS.every((name) => !getRegistrationFieldError(name, form[name])) &&
+    !emailTaken
 
   function handleChange(event) {
     const { name, value } = event.target
@@ -240,28 +100,33 @@ function Registro({ onRegistered, onGoToLogin }) {
 
     setErrors((current) => {
       if (!current[name]) return current
-      return { ...current, [name]: getFieldError(name, value) }
+      return {
+        ...current,
+        [name]: getRegistrationFieldError(name, value),
+      }
     })
   }
 
   async function handleBlur(event) {
     const { name, value } = event.target
-    const localError = getFieldError(name, value)
+    const localError = getRegistrationFieldError(name, value)
 
     setErrors((current) => ({ ...current, [name]: localError }))
 
     if (name !== 'email' || localError) return
 
     try {
-      const available = await isEmailAvailable(value)
+      const result = await checkEmailAvailability(value)
       if (normalizeEmail(latestEmail.current) !== normalizeEmail(value)) return
 
+      const available = result?.available !== false
       setEmailTaken(!available)
       setErrors((current) => ({
         ...current,
         email: available ? '' : 'Este correo ya está registrado.',
       }))
-    } catch {
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 400) return
       setFormError('No se pudo verificar el correo. Intenta nuevamente.')
     }
   }
@@ -272,7 +137,7 @@ function Registro({ onRegistered, onGoToLogin }) {
 
     const nextErrors = {}
     for (const name of FIELDS) {
-      const error = getFieldError(name, form[name])
+      const error = getRegistrationFieldError(name, form[name])
       if (error) nextErrors[name] = error
     }
     setErrors(nextErrors)
@@ -282,27 +147,30 @@ function Registro({ onRegistered, onGoToLogin }) {
     setIsSubmitting(true)
 
     try {
-      const available = await isEmailAvailable(form.email)
-      if (!available) {
-        setEmailTaken(true)
-        setErrors((current) => ({
-          ...current,
-          email: 'Este correo ya está registrado.',
-        }))
-        return
-      }
-
-      const user = await registerUser(form)
-      onRegistered?.(user)
+      const data = await registerUser(form)
+      onRegistered?.(data.user)
     } catch (error) {
-      if (error.code === 'EMAIL_TAKEN') {
-        setEmailTaken(true)
-        setErrors((current) => ({
-          ...current,
-          email: 'Este correo ya está registrado.',
-        }))
+      if (error instanceof ApiError) {
+        if (error.status === 409) {
+          setEmailTaken(true)
+          setErrors((current) => ({
+            ...current,
+            email:
+              error.errors.email ?? 'Este correo ya está registrado.',
+          }))
+        } else if (
+          error.status === 400 &&
+          Object.keys(error.errors).length > 0
+        ) {
+          setErrors((current) => ({ ...current, ...error.errors }))
+          setFormError(error.message)
+        } else {
+          setFormError(error.message)
+        }
       } else {
-        setFormError(error.message || 'No se pudo crear la cuenta. Intenta nuevamente.')
+        setFormError(
+          error.message || 'No se pudo crear la cuenta. Intenta nuevamente.',
+        )
       }
     } finally {
       setIsSubmitting(false)
@@ -336,7 +204,8 @@ function Registro({ onRegistered, onGoToLogin }) {
             </div>
           </div>
           <p className="mt-4 text-sm leading-6 text-slate-600">
-            Regístrate para comprar de forma segura. Tus datos personales se almacenan cifrados.
+            Regístrate para comprar de forma segura. Tu cuenta se guarda en el
+            servidor de DayShop y estará disponible en cualquier dispositivo.
           </p>
         </header>
 
@@ -384,11 +253,11 @@ function Registro({ onRegistered, onGoToLogin }) {
             error={errors.password}
             hint={
               form.password.length > 0
-                ? `${form.password.length} de 12 caracteres mínimo`
-                : 'Mínimo 12 caracteres.'
+                ? `${form.password.length} de ${MIN_PASSWORD_LENGTH} caracteres mínimo`
+                : `Mínimo ${MIN_PASSWORD_LENGTH} caracteres.`
             }
             autoComplete="new-password"
-            placeholder="Mínimo 12 caracteres"
+            placeholder={`Mínimo ${MIN_PASSWORD_LENGTH} caracteres`}
             rightSlot={
               <button
                 type="button"
@@ -420,7 +289,8 @@ function Registro({ onRegistered, onGoToLogin }) {
         </form>
 
         <p className="mt-6 text-center text-xs leading-5 text-slate-500">
-          Tus datos personales se cifran con AES-GCM antes de guardarse en este navegador.
+          Tu contraseña se almacena cifrada y tus datos se guardan de forma
+          segura en el servidor.
         </p>
 
         {onGoToLogin ? (

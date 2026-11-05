@@ -1,10 +1,12 @@
 import { useSyncExternalStore } from 'react'
 import { esProductoActivo, getProductos } from './productos.js'
 
-export const CARRITO_STORAGE_KEY = 'dayshop:carrito:v1'
+export const CARRITO_STORAGE_KEY = 'dayshop:carrito:v2'
 const CARRITO_EVENT = 'dayshop:carrito-updated'
+const SIN_ITEMS = []
 
 let cacheCarrito = null
+let usuarioActivo = null
 
 function esItemValido(item) {
   return (
@@ -23,40 +25,83 @@ function normalizarItem(item) {
   }
 }
 
-export function getCarrito() {
-  if (cacheCarrito) return cacheCarrito
+function normalizarItems(items) {
+  const unicos = new Map()
 
-  try {
-    const raw = localStorage.getItem(CARRITO_STORAGE_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      if (Array.isArray(parsed)) {
-        const unicos = new Map()
-
-        for (const item of parsed.filter(esItemValido)) {
-          const normalizado = normalizarItem(item)
-          const anterior = unicos.get(normalizado.productoId)
-          unicos.set(normalizado.productoId, {
-            productoId: normalizado.productoId,
-            cantidad: (anterior?.cantidad ?? 0) + normalizado.cantidad,
-          })
-        }
-
-        cacheCarrito = [...unicos.values()]
-        return cacheCarrito
-      }
-    }
-  } catch {
-    /* Si el almacenamiento falla, se inicia con un carrito vacío. */
+  for (const item of items.filter(esItemValido)) {
+    const normalizado = normalizarItem(item)
+    const anterior = unicos.get(normalizado.productoId)
+    unicos.set(normalizado.productoId, {
+      productoId: normalizado.productoId,
+      cantidad: (anterior?.cantidad ?? 0) + normalizado.cantidad,
+    })
   }
 
-  cacheCarrito = []
+  return [...unicos.values()]
+}
+
+function leerTodos() {
+  try {
+    const raw = localStorage.getItem(CARRITO_STORAGE_KEY)
+    if (!raw) return {}
+
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed
+      : {}
+  } catch {
+    return {}
+  }
+}
+
+function construirCache() {
+  const resultado = {}
+
+  for (const [userId, items] of Object.entries(leerTodos())) {
+    if (Array.isArray(items)) resultado[userId] = normalizarItems(items)
+  }
+
+  return resultado
+}
+
+function getCache() {
+  if (!cacheCarrito) cacheCarrito = construirCache()
   return cacheCarrito
 }
 
+function getCarritoUsuario(userId) {
+  if (!userId) return SIN_ITEMS
+  return getCache()[userId] ?? SIN_ITEMS
+}
+
+export function setCarritoUsuario(userId) {
+  const siguiente =
+    userId === null || userId === undefined || userId === ''
+      ? null
+      : String(userId)
+  if (usuarioActivo === siguiente) return
+
+  usuarioActivo = siguiente
+  window.dispatchEvent(new Event(CARRITO_EVENT))
+}
+
+export function getCarrito() {
+  return getCarritoUsuario(usuarioActivo)
+}
+
 function guardarCarrito(items) {
+  if (!usuarioActivo) {
+    throw new Error('Inicia sesión para guardar productos en el carrito.')
+  }
+
   try {
-    localStorage.setItem(CARRITO_STORAGE_KEY, JSON.stringify(items))
+    localStorage.setItem(
+      CARRITO_STORAGE_KEY,
+      JSON.stringify({
+        ...getCache(),
+        [usuarioActivo]: items,
+      }),
+    )
   } catch {
     throw new Error('No se pudo guardar el carrito en este navegador.')
   }

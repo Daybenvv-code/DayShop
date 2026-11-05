@@ -10,6 +10,10 @@ import {
   obtenerCategoria,
   useProductos,
 } from '../../data/productos.js'
+import {
+  parsearEspecificaciones,
+  validateProducto,
+} from '../../../shared/catalog.js'
 import { esAdministrador } from '../../data/usuarios.js'
 
 const FORM_INICIAL = {
@@ -27,19 +31,6 @@ const MAX_IMAGEN_BYTES = 900 * 1024
 
 const inputClass =
   'w-full rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm text-slate-900 shadow-sm outline-none transition placeholder:text-slate-400 focus:border-indigo-500 focus:ring-4 focus:ring-indigo-100'
-
-function parsearEspecificaciones(texto) {
-  return texto
-    .split('\n')
-    .reduce((especificaciones, linea) => {
-      const [clave, ...resto] = linea.split(':')
-      const nombre = clave.trim()
-      const valor = resto.join(':').trim()
-
-      if (nombre && valor) especificaciones[nombre] = valor
-      return especificaciones
-    }, {})
-}
 
 function AccesoRestringido({ onBack }) {
   return (
@@ -75,6 +66,7 @@ function Panel({ session, onBack }) {
   const [editingId, setEditingId] = useState(null)
   const [imagenActual, setImagenActual] = useState('')
   const [mensaje, setMensaje] = useState(null)
+  const [guardando, setGuardando] = useState(false)
   const [filtro, setFiltro] = useState('todos')
   const [busqueda, setBusqueda] = useState('')
 
@@ -185,47 +177,14 @@ function Panel({ session, onBack }) {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault()
 
-    const titulo = form.titulo.trim()
-    const precio = Number(form.precio)
-    const stock = Number(form.stock)
-
-    if (!titulo) {
-      setMensaje({
-        tipo: 'error',
-        texto: 'El título del producto es obligatorio.',
-      })
-      return
-    }
-
-    if (!Number.isFinite(precio) || precio <= 0) {
-      setMensaje({ tipo: 'error', texto: 'Ingresa un precio mayor a cero.' })
-      return
-    }
-
-    if (!Number.isInteger(stock) || stock < 0) {
-      setMensaje({
-        tipo: 'error',
-        texto: 'El stock debe ser un número entero igual o mayor a cero.',
-      })
-      return
-    }
-
-    if (!form.descripcion.trim()) {
-      setMensaje({
-        tipo: 'error',
-        texto: 'La descripción es obligatoria para la vista de detalle.',
-      })
-      return
-    }
-
     const datos = {
-      titulo,
+      titulo: form.titulo.trim(),
       categoria: form.categoria,
-      precio,
-      stock,
+      precio: Number(form.precio),
+      stock: Number(form.stock),
       descripcion: form.descripcion.trim(),
       especificaciones: parsearEspecificaciones(form.especificaciones),
       activo: form.activo,
@@ -233,15 +192,25 @@ function Panel({ session, onBack }) {
 
     if (form.imagen.trim()) datos.imagen = form.imagen.trim()
 
+    const errores = validateProducto(datos)
+    const primerError = Object.values(errores)[0]
+
+    if (primerError) {
+      setMensaje({ tipo: 'error', texto: primerError })
+      return
+    }
+
+    setGuardando(true)
+
     try {
       if (editingId) {
-        actualizarProducto(editingId, datos)
+        await actualizarProducto(editingId, datos)
         setMensaje({
           tipo: 'success',
           texto: 'Producto actualizado. El catálogo ya refleja los cambios.',
         })
       } else {
-        crearProducto(datos)
+        await crearProducto(datos)
         setMensaje({
           tipo: 'success',
           texto: 'Producto agregado. El catálogo ya refleja los cambios.',
@@ -254,12 +223,14 @@ function Panel({ session, onBack }) {
         tipo: 'error',
         texto: error.message || 'No se pudo guardar el producto.',
       })
+    } finally {
+      setGuardando(false)
     }
   }
 
-  function handleToggle(producto) {
+  async function handleToggle(producto) {
     try {
-      const actualizado = cambiarDisponibilidadProducto(
+      const actualizado = await cambiarDisponibilidadProducto(
         producto.id,
         !esProductoActivo(producto),
       )
@@ -285,14 +256,14 @@ function Panel({ session, onBack }) {
     }
   }
 
-  function handleDelete(producto) {
+  async function handleDelete(producto) {
     const confirmado = window.confirm(
       `¿Eliminar "${producto.titulo}" del catálogo?`,
     )
     if (!confirmado) return
 
     try {
-      eliminarProducto(producto.id)
+      await eliminarProducto(producto.id)
       if (editingId === producto.id) resetForm()
       setMensaje({
         tipo: 'success',
@@ -648,9 +619,14 @@ function Panel({ session, onBack }) {
 
               <button
                 type="submit"
-                className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/25 transition hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-200"
+                disabled={guardando}
+                className="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-bold text-white shadow-lg shadow-indigo-600/25 transition hover:bg-indigo-700 focus:outline-none focus:ring-4 focus:ring-indigo-200 disabled:cursor-not-allowed disabled:bg-slate-300"
               >
-                {editingId ? 'Guardar cambios' : 'Agregar al catálogo'}
+                {guardando
+                  ? 'Guardando...'
+                  : editingId
+                    ? 'Guardar cambios'
+                    : 'Agregar al catálogo'}
               </button>
             </form>
           </section>
