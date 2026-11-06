@@ -1,0 +1,49 @@
+[
+  {
+    "id": "admin-dayshop",
+    "emailHash": "WszC59DOm/vZN6WRJbA5AI1x1hvv854yfvfWsADnSBE=",
+    "salt": "gcu7aBPbO0IsDePfvfCGsg==",
+    "iterations": 210000,
+    "authHash": "bOTYbqfba/ZZYJE0K195LOqwlJvTvTg1o8OTGHGBBI4=",
+    "iv": "a3KSKMXRUgD1RIng",
+    "profile": "0gRlMDiupTXh891fHWpwXZMu4i6CRe4s38ofBxfm+egiLfnxaFLHrH8XfrvjtBNu/aRijxmQ3NxX/lRNY808Vse5VkHQ8M8CuTTMgBNVJJPU+rz1QQZXWwAN5yb55Q0ckJezxlbFJ33lzzMShYyjdhrHByN2uUmm+a6BvKdKBYg=",
+    "createdAt": "2026-10-25T19:13:22.482Z"
+  },
+  {
+    "id": "admin-dayshop-2",
+    "emailHash": "88zP4WaB3LYZ6NVm21TfbpXiNDGiY1BJ8XHZvsnANog=",
+    "salt": "3xr9FXOlQh7P4CkNPuF50Q==",
+    "iterations": 210000,
+    "authHash": "v5hdU0+IQA6/PNv2FfBDvz5e0pWhYLZSQ2sv+xKYmfg=",
+    "iv": "c1ViBOmN2NrkJVIB",
+    "profile": "HRUCzv0M8zgityCL0PXQQvccUSk9lQ1LBCGvHESLVvNqp5XoLmhFwF6N11TKqv4/+epM3bApAcxxmSc3TVviL8BqFwR1KqzZZHZHP2jNBlZDuouaw1BFO1MFY9KOp5HPtvnpecApxqnjMGTUr6JgoWzUMid5x1nwPXV2exrTYTGCOCX4ug==",
+    "createdAt": "2026-10-31T00:00:00.000Z"
+  },
+  {
+    "id": "3904bab2-9782-40f8-88e5-25cb00512054",
+    "nombreCompleto": "DayBen Salda",
+    "email": "dayben@gmail.com",
+    "telefono": "369852741",
+    "rol": "cliente",
+    "passwordHash": "scrypt$16384$8$1$yZnkC+CHf2u6pOKqILsjxQ==$QNYRuHGOXv1E/K4Pd2xENbY5mKR+y5AQogOZKhjEUijW7Xeqt4VmIxyLmZeb/9GSuIa/PjJKylFMVbX5y1TFKw==",
+    "createdAt": "2026-11-02T20:57:13.785Z"
+  },
+  {
+    "id": "09646682-571b-4ab9-bbd7-5552bc1cd1b9",
+    "nombreCompleto": "DayBen Salda",
+    "email": "daybenvvv@gmail.com",
+    "telefono": "369852147",
+    "rol": "cliente",
+    "passwordHash": "scrypt$16384$8$1$ihqpa5e/A7UmU2SeUraO6g==$8EalbK2kx5yJJ7hxyGWhmPoMypuFIvefBWZpFJV0jjG+8aj3HAQ3LFsAQm4XSKqYjGb30amZ+70+/0aF75YGYQ==",
+    "createdAt": "2026-11-02T21:08:10.753Z"
+  },
+  {
+    "id": "e4ebfe59-0f0d-4375-917c-9e8bd98cfe2e",
+    "nombreCompleto": "Administrador DayShop",
+    "email": "admin2@dayshop.com",
+    "telefono": "999999999",
+    "rol": "admin",
+    "passwordHash": "scrypt$16384$8$1$AOLiD3itziXZfFRdtTKkHg==$mAU5RLV1TRMlDfKmjOa/XfS2aypZ44HWxkHXD98B6ivtbPd44F+4nrj3PA6FiOgADK1jyqUX+mDwZMU/yXZ/Tw==",
+    "createdAt": "2026-11-03T19:47:48.206Z"
+  }
+]
