@@ -6,5 +6,6 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     clearMocks: true,
+    slowTestThreshold: 1000,
   },
 })

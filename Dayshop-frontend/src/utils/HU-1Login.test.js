@@ -1,6 +1,6 @@
 import { webcrypto } from 'node:crypto'
 import { createElement } from 'react'
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../App.jsx'
 import {
@@ -14,6 +14,7 @@ import { USERS_STORAGE_KEY } from '../data/usuarios.js'
 
 const MAX_ATTEMPTS = 5
 const LOCK_DURATION_MS = 15 * 60 * 1000
+const FAST_WAIT = { interval: 5 }
 const encoder = new TextEncoder()
 
 function toBase64(bytes) {
@@ -137,14 +138,14 @@ describe('Login - criterios de aceptación US-x', () => {
     const firstRender = render(createElement(Login, { onLoggedIn }))
     completarLogin('cliente@dominio.com', 'OtraClave123')
     enviarLogin()
-    await screen.findByRole('alert')
+    await screen.findByRole('alert', {}, FAST_WAIT)
     expect(onLoggedIn).not.toHaveBeenCalled()
     firstRender.unmount()
 
     render(createElement(Login, { onLoggedIn }))
     completarLogin('no-existe@dominio.com', 'ClaveSegura123')
     enviarLogin()
-    await screen.findByRole('alert')
+    await screen.findByRole('alert', {}, FAST_WAIT)
     expect(onLoggedIn).not.toHaveBeenCalled()
   })
 
@@ -175,7 +176,7 @@ describe('Login - criterios de aceptación US-x', () => {
     completarLogin('cliente@dominio.com', 'OtraClave123')
     enviarLogin()
 
-    const alert = await screen.findByRole('alert')
+    const alert = await screen.findByRole('alert', {}, FAST_WAIT)
     expect(alert.textContent).toContain('Correo o contraseña incorrectos')
   })
 
@@ -185,13 +186,15 @@ describe('Login - criterios de aceptación US-x', () => {
     const firstRender = render(createElement(Login))
     completarLogin('cliente@dominio.com', 'OtraClave123')
     enviarLogin()
-    const wrongPasswordMessage = (await screen.findByRole('alert')).textContent
+    const wrongPasswordMessage = (await screen.findByRole('alert', {}, FAST_WAIT))
+      .textContent
     firstRender.unmount()
 
     render(createElement(Login))
     completarLogin('no-existe@dominio.com', 'OtraClave123')
     enviarLogin()
-    const unknownEmailMessage = (await screen.findByRole('alert')).textContent
+    const unknownEmailMessage = (await screen.findByRole('alert', {}, FAST_WAIT))
+      .textContent
 
     expect(unknownEmailMessage).toBe(wrongPasswordMessage)
     expect(wrongPasswordMessage).toContain('Correo o contraseña incorrectos')
@@ -219,12 +222,16 @@ describe('Login - criterios de aceptación US-x', () => {
     enviarLogin()
 
     expect(
-      await screen.findByRole('heading', { name: 'Mi cuenta / Mis compras' }),
+      await screen.findByRole(
+        'heading',
+        { name: 'Mi cuenta / Mis compras' },
+        FAST_WAIT,
+      ),
     ).not.toBeNull()
   })
 
   it('9. bloquea la cuenta 15 minutos tras 5 intentos fallidos consecutivos', async () => {
-    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.useFakeTimers({ toFake: ['Date', 'setInterval', 'clearInterval'] })
     const startedAt = new Date('2026-11-05T12:00:00.000Z')
     vi.setSystemTime(startedAt)
 
@@ -242,12 +249,12 @@ describe('Login - criterios de aceptación US-x', () => {
         expect(screen.getByRole('alert').textContent).toContain(
           `Te quedan ${remaining} intento${remaining === 1 ? '' : 's'}`,
         )
-      })
+      }, FAST_WAIT)
       await waitFor(() => {
         expect(
           screen.getByRole('button', { name: 'Iniciar sesión' }).disabled,
         ).toBe(false)
-      })
+      }, FAST_WAIT)
     }
 
     completarLogin('cliente@dominio.com', 'OtraClave123')
@@ -257,25 +264,25 @@ describe('Login - criterios de aceptación US-x', () => {
       expect(screen.getByRole('alert').textContent).toContain(
         'bloqueada temporalmente',
       )
-    })
+    }, FAST_WAIT)
     expect(onLoggedIn).not.toHaveBeenCalled()
 
     vi.setSystemTime(new Date(startedAt.getTime() + LOCK_DURATION_MS + 1000))
+    act(() => {
+      vi.advanceTimersByTime(1000)
+    })
 
-    await waitFor(
-      () => {
-        expect(
-          screen.getByRole('button', { name: 'Iniciar sesión' }).disabled,
-        ).toBe(false)
-      },
-      { timeout: 3000 },
-    )
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: 'Iniciar sesión' }).disabled,
+      ).toBe(false)
+    }, FAST_WAIT)
 
     completarLogin('cliente@dominio.com', 'ClaveSegura123')
     enviarLogin()
 
     await waitFor(() => {
       expect(onLoggedIn).toHaveBeenCalledTimes(1)
-    })
+    }, FAST_WAIT)
   })
 })
