@@ -103,7 +103,14 @@ function ProductoCard({ producto, onSelect }) {
           {etiqueta}
         </button>
 
-        {enCarrito > 0 && disponible ? (
+        {alcanzoStock ? (
+          <p
+            role="alert"
+            className="mt-2 text-center text-xs font-semibold text-amber-700"
+          >
+            Alcanzaste el límite de stock disponible.
+          </p>
+        ) : enCarrito > 0 && disponible ? (
           <p
             aria-live="polite"
             className="mt-2 text-center text-xs font-semibold text-indigo-600"

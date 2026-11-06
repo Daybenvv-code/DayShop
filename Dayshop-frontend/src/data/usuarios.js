@@ -1,4 +1,3 @@
-export const USERS_STORAGE_KEY = 'dayshop:users:v1'
 export const ROL_ADMIN = 'admin'
 export const ROL_CLIENTE = 'cliente'
 
@@ -26,18 +25,7 @@ const ADMIN_USER_2 = {
   createdAt: '2026-10-31T00:00:00.000Z',
 }
 
-const ADMIN_USERS = [ADMIN_USER, ADMIN_USER_2]
-
-function leerUsuarios() {
-  try {
-    const raw = localStorage.getItem(USERS_STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
+export const ADMIN_USERS = [ADMIN_USER, ADMIN_USER_2]
 
 export function normalizarRol(rol) {
   return rol === ROL_ADMIN ? ROL_ADMIN : ROL_CLIENTE
@@ -45,23 +33,4 @@ export function normalizarRol(rol) {
 
 export function esAdministrador(session) {
   return normalizarRol(session?.rol) === ROL_ADMIN
-}
-
-export function asegurarAdministrador() {
-  try {
-    const usuarios = leerUsuarios()
-    const existentes = new Set(usuarios.map((usuario) => usuario?.emailHash))
-    const faltantes = ADMIN_USERS.filter(
-      (admin) => !existentes.has(admin.emailHash),
-    )
-
-    if (faltantes.length === 0) return
-
-    localStorage.setItem(
-      USERS_STORAGE_KEY,
-      JSON.stringify([...usuarios, ...faltantes]),
-    )
-  } catch {
-    return
-  }
 }

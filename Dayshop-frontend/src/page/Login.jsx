@@ -204,11 +204,6 @@ function Login({ onLoggedIn, onGoToRegister }) {
   const [formError, setFormError] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [lockUntil, setLockUntil] = useState(0)
-  const [now, setNow] = useState(() => Date.now())
-  const latestEmail = useRef('')
-
-  const isLocked = lockUntil > now
 
   useEffect(() => {
     if (!lockUntil) return undefined
@@ -230,36 +225,19 @@ function Login({ onLoggedIn, onGoToRegister }) {
     setForm((current) => ({ ...current, [name]: value }))
     setFormError('')
 
-    if (name === 'email') {
-      latestEmail.current = value
-      setLockUntil(0)
-    }
-
     setErrors((current) => {
       if (!current[name]) return current
-      return { ...current, [name]: getFieldError(name, value) }
+      return { ...current, [name]: getLoginFieldError(name, value) }
     })
   }
 
-  async function handleBlur(event) {
+  function handleBlur(event) {
     const { name, value } = event.target
-    const localError = getFieldError(name, value)
 
-    setErrors((current) => ({ ...current, [name]: localError }))
-
-    if (name !== 'email' || localError) return
-
-    try {
-      const until = await getLockUntil(value)
-      if (normalizeEmail(latestEmail.current) !== normalizeEmail(value)) return
-
-      if (until) {
-        setNow(Date.now())
-        setLockUntil(until)
-      }
-    } catch {
-      setFormError('No se pudo verificar el estado de la cuenta. Intenta nuevamente.')
-    }
+    setErrors((current) => ({
+      ...current,
+      [name]: getLoginFieldError(name, value),
+    }))
   }
 
   async function handleSubmit(event) {
@@ -274,42 +252,27 @@ function Login({ onLoggedIn, onGoToRegister }) {
     setIsSubmitting(true)
 
     try {
-      const existingLock = await getLockUntil(form.email)
-      if (existingLock) {
-        setNow(Date.now())
-        setLockUntil(existingLock)
-        return
-      }
-
-      const user = await authenticate(form)
-      if (user) {
-        await clearFailedAttempts(form.email)
-        onLoggedIn?.(user)
-        return
-      }
-
-      const { count, lockedUntil } = await registerFailedAttempt(form.email)
-      if (lockedUntil) {
-        setNow(Date.now())
-        setLockUntil(lockedUntil)
+      const data = await loginUser(form)
+      onLoggedIn?.(data.user)
+    } catch (error) {
+      if (error instanceof ApiError) {
+        if (error.status === 400 && Object.keys(error.errors).length > 0) {
+          setErrors((current) => ({ ...current, ...error.errors }))
+          setFormError(error.message)
+        } else {
+          setFormError(error.message)
+        }
       } else {
-        const remaining = MAX_ATTEMPTS - count
         setFormError(
-          `${GENERIC_ERROR} Te quedan ${remaining} intento${remaining === 1 ? '' : 's'}.`,
+          error.message || 'No se pudo iniciar sesión. Intenta nuevamente.',
         )
       }
-    } catch (error) {
-      setFormError(error.message || 'No se pudo iniciar sesión. Intenta nuevamente.')
     } finally {
       setIsSubmitting(false)
     }
   }
 
-  const alertMessage = isLocked
-    ? `Demasiados intentos fallidos. Por seguridad, tu cuenta está bloqueada temporalmente. Intenta de nuevo en ${formatRemaining(
-        lockUntil - now,
-      )}.`
-    : formError
+  const alertMessage = formError
 
   return (
     <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-slate-950 px-4 py-10 sm:px-6">

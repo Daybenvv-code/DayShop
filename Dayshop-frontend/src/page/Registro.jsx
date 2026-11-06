@@ -204,28 +204,33 @@ function Registro({ onRegistered, onGoToLogin }) {
 
     setErrors((current) => {
       if (!current[name]) return current
-      return { ...current, [name]: getFieldError(name, value) }
+      return {
+        ...current,
+        [name]: getRegistrationFieldError(name, value),
+      }
     })
   }
 
   async function handleBlur(event) {
     const { name, value } = event.target
-    const localError = getFieldError(name, value)
+    const localError = getRegistrationFieldError(name, value)
 
     setErrors((current) => ({ ...current, [name]: localError }))
 
     if (name !== 'email' || localError) return
 
     try {
-      const available = await isEmailAvailable(value)
+      const result = await checkEmailAvailability(value)
       if (normalizeEmail(latestEmail.current) !== normalizeEmail(value)) return
 
+      const available = result?.available !== false
       setEmailTaken(!available)
       setErrors((current) => ({
         ...current,
         email: available ? '' : 'Este correo ya está registrado.',
       }))
-    } catch {
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 400) return
       setFormError('No se pudo verificar el correo. Intenta nuevamente.')
     }
   }
@@ -242,27 +247,30 @@ function Registro({ onRegistered, onGoToLogin }) {
     setIsSubmitting(true)
 
     try {
-      const available = await isEmailAvailable(form.email)
-      if (!available) {
-        setEmailTaken(true)
-        setErrors((current) => ({
-          ...current,
-          email: 'Este correo ya está registrado.',
-        }))
-        return
-      }
-
-      const user = await registerUser(form)
-      onRegistered?.(user)
+      const data = await registerUser(form)
+      onRegistered?.(data.user)
     } catch (error) {
-      if (error.code === 'EMAIL_TAKEN') {
-        setEmailTaken(true)
-        setErrors((current) => ({
-          ...current,
-          email: 'Este correo ya está registrado.',
-        }))
+      if (error instanceof ApiError) {
+        if (error.status === 409) {
+          setEmailTaken(true)
+          setErrors((current) => ({
+            ...current,
+            email:
+              error.errors.email ?? 'Este correo ya está registrado.',
+          }))
+        } else if (
+          error.status === 400 &&
+          Object.keys(error.errors).length > 0
+        ) {
+          setErrors((current) => ({ ...current, ...error.errors }))
+          setFormError(error.message)
+        } else {
+          setFormError(error.message)
+        }
       } else {
-        setFormError(error.message || 'No se pudo crear la cuenta. Intenta nuevamente.')
+        setFormError(
+          error.message || 'No se pudo crear la cuenta. Intenta nuevamente.',
+        )
       }
     } finally {
       setIsSubmitting(false)
@@ -296,7 +304,8 @@ function Registro({ onRegistered, onGoToLogin }) {
             </div>
           </div>
           <p className="mt-4 text-sm leading-6 text-slate-600">
-            Regístrate para comprar de forma segura. Tus datos personales se almacenan cifrados.
+            Regístrate para comprar de forma segura. Tu cuenta se guarda en el
+            servidor de DayShop y estará disponible en cualquier dispositivo.
           </p>
         </header>
 
@@ -344,11 +353,11 @@ function Registro({ onRegistered, onGoToLogin }) {
             error={errors.password}
             hint={
               form.password.length > 0
-                ? `${form.password.length} de 12 caracteres mínimo`
-                : 'Mínimo 12 caracteres.'
+                ? `${form.password.length} de ${MIN_PASSWORD_LENGTH} caracteres mínimo`
+                : `Mínimo ${MIN_PASSWORD_LENGTH} caracteres.`
             }
             autoComplete="new-password"
-            placeholder="Mínimo 12 caracteres"
+            placeholder={`Mínimo ${MIN_PASSWORD_LENGTH} caracteres`}
             rightSlot={
               <button
                 type="button"
@@ -380,7 +389,8 @@ function Registro({ onRegistered, onGoToLogin }) {
         </form>
 
         <p className="mt-6 text-center text-xs leading-5 text-slate-500">
-          Tus datos personales se cifran con AES-GCM antes de guardarse en este navegador.
+          Tu contraseña se almacena cifrada y tus datos se guardan de forma
+          segura en el servidor.
         </p>
 
         {onGoToLogin ? (

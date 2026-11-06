@@ -24,12 +24,17 @@ function Carrito({ onBack, onOpenCatalogo, onOpenBuscador, onOpenEnvio }) {
           productos.find((candidato) => candidato.id === item.productoId) ?? null
         const excedeStock = Boolean(producto) && item.cantidad > producto.stock
         const inactivo = Boolean(producto) && !esProductoActivo(producto)
+        const alcanzoStock =
+          Boolean(producto) &&
+          producto.stock > 0 &&
+          item.cantidad >= producto.stock
 
         return {
           ...item,
           producto,
           excedeStock,
           inactivo,
+          alcanzoStock,
           subtotal: producto ? producto.precio * item.cantidad : 0,
         }
       }),
@@ -201,6 +206,22 @@ function Carrito({ onBack, onOpenCatalogo, onOpenBuscador, onOpenEnvio }) {
                               : linea.producto.stock <= 0
                                 ? 'Este producto se encuentra agotado. Elimínalo para continuar.'
                                 : `Solo quedan ${linea.producto.stock} unidades. Reduce la cantidad.`}
+                          </p>
+                        ) : null}
+
+                        {linea.alcanzoStock &&
+                        !linea.inactivo &&
+                        !linea.excedeStock ? (
+                          <p
+                            role="alert"
+                            className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700"
+                          >
+                            Alcanzaste el límite de stock: solo hay{' '}
+                            {linea.producto.stock}{' '}
+                            {linea.producto.stock === 1
+                              ? 'unidad disponible'
+                              : 'unidades disponibles'}
+                            . No puedes aumentar más la cantidad.
                           </p>
                         ) : null}
 

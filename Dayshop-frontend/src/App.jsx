@@ -1,13 +1,14 @@
 import { useEffect, useState } from 'react'
-import { useCantidadCarrito } from './data/carrito.js'
+import {
+  setCarritoUsuario,
+  useCantidadCarrito,
+} from './data/carrito.js'
+import { limpiarDirecciones } from './data/direcciones.js'
 import { obtenerEstadoPedido } from './data/estadosPedido.js'
 import { useOrdenes } from './data/ordenes.js'
 import { formatearPrecio } from './data/productos.js'
-import {
-  asegurarAdministrador,
-  esAdministrador,
-  normalizarRol,
-} from './data/usuarios.js'
+import { esAdministrador, normalizarRol } from './data/usuarios.js'
+import { getSession, logoutUser } from './data/authApi.js'
 import Login from './page/Login.jsx'
 import Registro from './page/Registro.jsx'
 import Panel from './page/Panel/Panel.jsx'
@@ -19,6 +20,10 @@ import RegistroEnvio from './page/RegistroEnvio/RegistroEnvio.jsx'
 import Procesamiento from './page/Procesamient0/Procesamiento.jsx'
 import Seguimiento from './page/Seguiente/Seguimiento.jsx'
 import Historial from './page/Historial/Historial.jsx'
+
+function usuarioId(session) {
+  return session?.id ?? session?.email ?? null
+}
 
 function MiCuenta({
   session,
@@ -34,7 +39,7 @@ function MiCuenta({
 }) {
   const cantidadCarrito = useCantidadCarrito()
   const ordenes = useOrdenes()
-  const userId = session?.id ?? session?.email ?? 'invitado'
+  const userId = usuarioId(session) ?? 'invitado'
   const misOrdenes = ordenes.filter((orden) => orden.userId === userId)
 
   return (
@@ -192,13 +197,33 @@ function App() {
   const [envioVolverA, setEnvioVolverA] = useState('carrito')
   const [envioSeleccionado, setEnvioSeleccionado] = useState(null)
   const [selectedOrderNumber, setSelectedOrderNumber] = useState(null)
+  const [isRestoringSession, setIsRestoringSession] = useState(true)
   const esAdmin = esAdministrador(session)
 
   useEffect(() => {
-    asegurarAdministrador()
+    let active = true
+
+    getSession()
+      .then((user) => {
+        if (!active || !user) return
+        setCarritoUsuario(usuarioId(user))
+        setSession({ ...user, rol: normalizarRol(user.rol) })
+        setScreen('cuenta')
+      })
+      .catch(() => {
+        /* Sin sesión activa: se muestra el inicio de sesión. */
+      })
+      .finally(() => {
+        if (active) setIsRestoringSession(false)
+      })
+
+    return () => {
+      active = false
+    }
   }, [])
 
   function handleAuthenticated(user) {
+    setCarritoUsuario(usuarioId(user))
     setSession({ ...user, rol: normalizarRol(user?.rol) })
     setScreen('cuenta')
     setSelectedProductId(null)
@@ -206,7 +231,15 @@ function App() {
     setSelectedOrderNumber(null)
   }
 
-  function handleLogout() {
+  async function handleLogout() {
+    try {
+      await logoutUser()
+    } catch {
+      /* La sesión local se cierra aunque el servidor no responda. */
+    }
+
+    setCarritoUsuario(null)
+    limpiarDirecciones()
     setSession(null)
     setScreen('login')
     setSelectedProductId(null)
@@ -251,6 +284,16 @@ function App() {
     setSelectedProductId(null)
     setSelectedOrderNumber(numero)
     setScreen('historial')
+  }
+
+  if (isRestoringSession) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-950 px-4">
+        <p className="text-sm font-semibold text-slate-300">
+          Verificando sesión...
+        </p>
+      </main>
+    )
   }
 
   if (session) {

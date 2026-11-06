@@ -2,13 +2,15 @@ import { useMemo, useState } from 'react'
 import { useCarrito, vaciarCarrito } from '../../data/carrito.js'
 import { obtenerCiudad } from '../../data/envios.js'
 import { crearOrden } from '../../data/ordenes.js'
+import { confirmarPedido } from '../../data/pedidos.js'
 import {
-  descontarStock,
+  cargarProductos,
   esProductoActivo,
   formatearPrecio,
   obtenerCategoria,
   useProductos,
 } from '../../data/productos.js'
+import { MENSAJE_SIN_COBERTURA } from '../../../shared/mensajes.js'
 
 function formatearFecha(valor) {
   const fecha = new Date(valor)
@@ -245,7 +247,7 @@ function Procesamiento({
     Boolean(envio) &&
     !procesando
 
-  function handleConfirmar() {
+  async function handleConfirmar() {
     setError('')
 
     if (carritoVacio) {
@@ -259,7 +261,7 @@ function Procesamiento({
     }
 
     if (!tieneCobertura) {
-      setError('La dirección seleccionada no tiene cobertura de envío.')
+      setError(MENSAJE_SIN_COBERTURA)
       return
     }
 
@@ -280,30 +282,45 @@ function Procesamiento({
 
         return {
           productoId: linea.productoId,
-          titulo: linea.producto.titulo,
-          imagen: linea.producto.imagen,
-          precio: linea.producto.precio,
           cantidad: linea.cantidad,
-          subtotal: linea.subtotal,
         }
       })
 
-      descontarStock(items)
+      const direccionId =
+        envio.id && envio.id !== 'actual' ? envio.id : null
+      const pedido = await confirmarPedido({
+        items,
+        direccionId,
+        direccion: {
+          alias: envio.alias ?? '',
+          direccion: envio.direccion,
+          referencia: envio.referencia,
+          ciudad: envio.ciudad,
+          celular: envio.celular,
+        },
+        subtotal: Number(subtotal.toFixed(2)),
+        costoEnvio: Number(costoEnvio.toFixed(2)),
+        total: Number(total.toFixed(2)),
+      })
 
       const nuevaOrden = crearOrden({
         userId: session?.id ?? session?.email ?? 'invitado',
-        items,
-        direccion: envio,
-        subtotal,
-        costoEnvio,
-        total,
+        items: pedido.items,
+        direccion: pedido.direccion ?? envio,
+        subtotal: pedido.subtotal,
+        costoEnvio: pedido.costoEnvio,
+        total: pedido.total,
       })
 
       vaciarCarrito()
       setOrden(nuevaOrden)
     } catch (compraError) {
+      cargarProductos({ force: true }).catch(() => {})
+      const detalle = Object.values(compraError?.errors ?? {})[0]
       setError(
-        compraError.message || 'No se pudo completar la compra. Intenta de nuevo.',
+        detalle ||
+          compraError.message ||
+          'No se pudo completar la compra. Intenta de nuevo.',
       )
     } finally {
       setProcesando(false)

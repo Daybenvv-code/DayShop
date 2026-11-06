@@ -2,9 +2,15 @@ import { useState } from 'react'
 import {
   eliminarDireccion,
   guardarDireccion,
-  useDirecciones,
+  useDireccionesEstado,
 } from '../../data/direcciones.js'
 import { CIUDADES_ENVIO, obtenerCiudad } from '../../data/envios.js'
+import {
+  getDireccionFieldError,
+  normalizarDireccion,
+  validateDireccion,
+} from '../../../shared/direcciones.js'
+import { MENSAJE_SIN_COBERTURA } from '../../../shared/mensajes.js'
 
 const FORM_INICIAL = {
   alias: '',
@@ -12,43 +18,6 @@ const FORM_INICIAL = {
   referencia: '',
   ciudad: '',
   celular: '',
-}
-
-const CAMPOS_OBLIGATORIOS = ['direccion', 'referencia', 'ciudad', 'celular']
-
-function validarCampo(name, value) {
-  const texto = value.trim()
-
-  if (name === 'direccion') {
-    if (!texto) return 'La dirección exacta es obligatoria.'
-    if (texto.length < 6) return 'Incluye calle, número y distrito.'
-    return ''
-  }
-
-  if (name === 'referencia') {
-    if (!texto) return 'La referencia es obligatoria.'
-    return ''
-  }
-
-  if (name === 'ciudad') {
-    if (!texto) return 'Selecciona tu ciudad.'
-    const ciudad = obtenerCiudad(texto)
-    if (!ciudad) return 'Selecciona una ciudad válida.'
-    if (!ciudad.cobertura) {
-      return `Aún no tenemos cobertura de envío en ${ciudad.nombre}.`
-    }
-    return ''
-  }
-
-  if (name === 'celular') {
-    if (!texto) return 'El celular de contacto es obligatorio.'
-    if (!/^\d{9}$/.test(texto)) {
-      return 'Ingresa un celular de 9 dígitos numéricos.'
-    }
-    return ''
-  }
-
-  return ''
 }
 
 function clasesCampo(tieneError) {
@@ -77,7 +46,11 @@ function RegistroEnvio({
   onContinueToPayment,
 }) {
   const userId = session?.id ?? session?.email ?? 'invitado'
-  const direccionesGuardadas = useDirecciones(userId)
+  const {
+    direcciones: direccionesGuardadas,
+    cargando: cargandoDirecciones,
+    error: errorDirecciones,
+  } = useDireccionesEstado(userId)
   const [form, setForm] = useState(FORM_INICIAL)
   const [errores, setErrores] = useState({})
   const [direccionSeleccionadaId, setDireccionSeleccionadaId] = useState(null)
@@ -90,10 +63,8 @@ function RegistroEnvio({
 
   function handleChange(event) {
     const { name, value } = event.target
-    const limpio =
-      name === 'celular' ? value.replace(/\D/g, '').slice(0, 9) : value
 
-    setForm((current) => ({ ...current, [name]: limpio }))
+    setForm((current) => ({ ...current, [name]: value }))
     setMensaje(null)
     setDireccionConfirmada(null)
 
@@ -105,9 +76,18 @@ function RegistroEnvio({
     if (errores[name]) {
       setErrores((current) => ({
         ...current,
-        [name]: validarCampo(name, limpio),
+        [name]: getDireccionFieldError(name, value),
       }))
     }
+  }
+
+  function handleBlur(event) {
+    const { name, value } = event.target
+
+    setErrores((current) => ({
+      ...current,
+      [name]: getDireccionFieldError(name, value),
+    }))
   }
 
   function seleccionarDireccion(direccion) {
@@ -134,14 +114,14 @@ function RegistroEnvio({
     setGuardarEnPerfil(true)
   }
 
-  function handleEliminar(direccion) {
+  async function handleEliminar(direccion) {
     const confirmado = window.confirm(
       `¿Eliminar la dirección "${direccion.alias || direccion.direccion}"?`,
     )
     if (!confirmado) return
 
     try {
-      eliminarDireccion(userId, direccion.id)
+      await eliminarDireccion(userId, direccion.id)
       if (direccionSeleccionadaId === direccion.id) iniciarNuevaDireccion()
       setMensaje({ tipo: 'success', texto: 'Dirección eliminada de tu perfil.' })
     } catch (error) {
@@ -152,48 +132,27 @@ function RegistroEnvio({
     }
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault()
     setMensaje(null)
     setDireccionConfirmada(null)
 
-    const siguientesErrores = {}
-    for (const name of CAMPOS_OBLIGATORIOS) {
-      const error = validarCampo(name, form[name])
-      if (error) siguientesErrores[name] = error
-    }
+    const siguientesErrores = validateDireccion(form)
 
     setErrores(siguientesErrores)
 
     if (Object.keys(siguientesErrores).length > 0) {
       setMensaje({
         tipo: 'error',
-        texto: 'Revisa los campos marcados para continuar.',
+        texto:
+          siguientesErrores.ciudad === MENSAJE_SIN_COBERTURA
+            ? MENSAJE_SIN_COBERTURA
+            : 'Revisa los campos marcados para continuar.',
       })
       return
     }
 
-    const ciudad = obtenerCiudad(form.ciudad)
-    if (!ciudad?.cobertura) {
-      setErrores({
-        ciudad: `Aún no tenemos cobertura de envío en ${
-          ciudad?.nombre ?? 'esta zona'
-        }.`,
-      })
-      setMensaje({
-        tipo: 'error',
-        texto: 'La ciudad seleccionada no tiene cobertura de envío disponible.',
-      })
-      return
-    }
-
-    const datos = {
-      alias: form.alias.trim(),
-      direccion: form.direccion.trim(),
-      referencia: form.referencia.trim(),
-      ciudad: form.ciudad,
-      celular: form.celular,
-    }
+    const datos = normalizarDireccion(form)
 
     try {
       let direccionFinal = null
@@ -210,7 +169,7 @@ function RegistroEnvio({
             direccion.celular === datos.celular,
         )
 
-        direccionFinal = duplicada ?? guardarDireccion(userId, datos)
+        direccionFinal = duplicada ?? (await guardarDireccion(userId, datos))
         seGuardo = !duplicada
       } else if (direccionSeleccionadaId) {
         direccionFinal =
@@ -235,6 +194,10 @@ function RegistroEnvio({
           : 'Dirección seleccionada para tu pedido.',
       })
     } catch (error) {
+      if (error?.errors && Object.keys(error.errors).length > 0) {
+        setErrores((current) => ({ ...current, ...error.errors }))
+      }
+
       setMensaje({
         tipo: 'error',
         texto: error.message || 'No se pudo guardar la dirección.',
@@ -312,7 +275,18 @@ function RegistroEnvio({
                 ) : null}
               </div>
 
-              {direccionesGuardadas.length === 0 ? (
+              {cargandoDirecciones ? (
+                <p className="mt-5 rounded-2xl border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500">
+                  Cargando direcciones guardadas...
+                </p>
+              ) : errorDirecciones ? (
+                <p
+                  role="alert"
+                  className="mt-5 rounded-2xl border border-red-200 bg-red-50 px-4 py-4 text-center text-sm font-semibold text-red-700"
+                >
+                  {errorDirecciones}
+                </p>
+              ) : direccionesGuardadas.length === 0 ? (
                 <p className="mt-5 rounded-2xl border border-dashed border-slate-300 px-4 py-8 text-center text-sm text-slate-500">
                   Aún no tienes direcciones guardadas. Completa el formulario y
                   guarda tu primera dirección de envío.
@@ -355,7 +329,7 @@ function RegistroEnvio({
                           </span>
                           {ciudad && !ciudad.cobertura ? (
                             <span className="mt-2 inline-flex rounded-full bg-red-100 px-2.5 py-1 text-xs font-bold text-red-700">
-                              Sin cobertura
+                              Sin cobertura de envío
                             </span>
                           ) : null}
                           {activa ? (
@@ -446,6 +420,7 @@ function RegistroEnvio({
                     name="direccion"
                     value={form.direccion}
                     onChange={handleChange}
+                    onBlur={handleBlur}
                     aria-invalid={Boolean(errores.direccion)}
                     aria-describedby={
                       errores.direccion ? 'direccion-error' : undefined
@@ -472,6 +447,7 @@ function RegistroEnvio({
                     name="referencia"
                     value={form.referencia}
                     onChange={handleChange}
+                    onBlur={handleBlur}
                     aria-invalid={Boolean(errores.referencia)}
                     aria-describedby={
                       errores.referencia ? 'referencia-error' : undefined
@@ -498,6 +474,7 @@ function RegistroEnvio({
                     name="ciudad"
                     value={form.ciudad}
                     onChange={handleChange}
+                    onBlur={handleBlur}
                     aria-invalid={Boolean(errores.ciudad)}
                     aria-describedby={
                       errores.ciudad ? 'ciudad-error' : undefined
@@ -525,7 +502,7 @@ function RegistroEnvio({
                     >
                       {ciudadSeleccionada.cobertura
                         ? `Cobertura disponible · Entrega estimada: ${ciudadSeleccionada.tiempo}.`
-                        : `Lo sentimos, aún no tenemos cobertura de envío en ${ciudadSeleccionada.nombre}.`}
+                        : MENSAJE_SIN_COBERTURA}
                     </p>
                   ) : null}
                 </div>
@@ -542,9 +519,9 @@ function RegistroEnvio({
                     name="celular"
                     type="tel"
                     inputMode="numeric"
-                    maxLength="9"
                     value={form.celular}
                     onChange={handleChange}
+                    onBlur={handleBlur}
                     aria-invalid={Boolean(errores.celular)}
                     aria-describedby={
                       errores.celular ? 'celular-error' : 'celular-hint'
@@ -643,7 +620,7 @@ function RegistroEnvio({
                   </p>
                 ) : (
                   <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-                    Sin cobertura de envío en {ciudadSeleccionada.nombre}.
+                    {MENSAJE_SIN_COBERTURA}
                   </p>
                 )
               ) : (
