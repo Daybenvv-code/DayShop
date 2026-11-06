@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react'
 import { useCantidadCarrito } from '../../data/carrito.js'
+import { useProductos } from '../../data/productos.js'
 import {
-  CATEGORIAS,
-  esProductoActivo,
-  useProductos,
-} from '../../data/productos.js'
+  agruparProductosPorCategoria,
+  obtenerProductosVisibles,
+} from '../../utils/HU-3Catalogo.js'
 import ProductoCard from './ProductoCard.jsx'
 
 function Catalogo({
@@ -20,18 +20,12 @@ function Catalogo({
   const [categoriaActiva, setCategoriaActiva] = useState('todos')
 
   const productosVisibles = useMemo(
-    () => productos.filter(esProductoActivo),
+    () => obtenerProductosVisibles(productos),
     [productos],
   )
 
   const categoriasConProductos = useMemo(
-    () =>
-      CATEGORIAS.map((categoria) => ({
-        ...categoria,
-        productos: productosVisibles.filter(
-          (producto) => producto.categoria === categoria.id,
-        ),
-      })).filter((categoria) => categoria.productos.length > 0),
+    () => agruparProductosPorCategoria(productosVisibles),
     [productosVisibles],
   )
 

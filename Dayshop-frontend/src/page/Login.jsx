@@ -1,8 +1,202 @@
-import { useState } from 'react'
-import { ApiError, loginUser } from '../data/authApi.js'
-import { getLoginFieldError } from '../../shared/validation.js'
+import { useEffect, useRef, useState } from 'react'
+import {
+  getFieldError,
+  isLoginFormValid,
+  validateLoginForm,
+} from '../utils/HU-1Login.js'
+import {
+  USERS_STORAGE_KEY,
+  normalizarRol,
+} from '../data/usuarios.js'
 
-const FIELDS = ['email', 'password']
+const ATTEMPTS_STORAGE_KEY = 'dayshop:login-attempts:v1'
+const PBKDF2_ITERATIONS = 210_000
+const MAX_ATTEMPTS = 5
+const LOCK_DURATION_MS = 15 * 60 * 1000
+const GENERIC_ERROR = 'Correo o contraseña incorrectos.'
+const encoder = new TextEncoder()
+const decoder = new TextDecoder()
+
+function normalizeEmail(value) {
+  return value.trim().toLowerCase()
+}
+
+function bytesToBase64(bytes) {
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary)
+}
+
+function base64ToBytes(value) {
+  const binary = atob(value)
+  const bytes = new Uint8Array(binary.length)
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index)
+  }
+  return bytes
+}
+
+async function digestBase64(value) {
+  const data = typeof value === 'string' ? encoder.encode(value) : value
+  const digest = await crypto.subtle.digest('SHA-256', data)
+  return bytesToBase64(new Uint8Array(digest))
+}
+
+async function derivePasswordKey(password, salt, iterations) {
+  const baseKey = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits'],
+  )
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
+    baseKey,
+    256,
+  )
+  return new Uint8Array(bits)
+}
+
+function safeEqual(left, right) {
+  if (typeof right !== 'string' || left.length !== right.length) return false
+  let difference = 0
+  for (let index = 0; index < left.length; index += 1) {
+    difference |= left.charCodeAt(index) ^ right.charCodeAt(index)
+  }
+  return difference === 0
+}
+
+function readUsers() {
+  try {
+    const raw = localStorage.getItem(USERS_STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed)
+      ? parsed.filter(
+          (user) =>
+            user &&
+            typeof user.emailHash === 'string' &&
+            typeof user.salt === 'string' &&
+            typeof user.authHash === 'string' &&
+            typeof user.iv === 'string' &&
+            typeof user.profile === 'string',
+        )
+      : []
+  } catch {
+    return []
+  }
+}
+
+function readAttempts() {
+  try {
+    const raw = localStorage.getItem(ATTEMPTS_STORAGE_KEY)
+    if (!raw) return {}
+    const parsed = JSON.parse(raw)
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}
+  } catch {
+    return {}
+  }
+}
+
+function writeAttempts(attempts) {
+  try {
+    localStorage.setItem(ATTEMPTS_STORAGE_KEY, JSON.stringify(attempts))
+  } catch {
+    /* Si el almacenamiento no está disponible, el bloqueo no persiste. */
+  }
+}
+
+async function getAttemptsKey(email) {
+  return digestBase64(`login:${normalizeEmail(email)}`)
+}
+
+async function getLockUntil(email) {
+  const attempts = readAttempts()
+  const record = attempts[await getAttemptsKey(email)]
+  if (!record || typeof record.lockedUntil !== 'number') return 0
+  return record.lockedUntil > Date.now() ? record.lockedUntil : 0
+}
+
+async function registerFailedAttempt(email) {
+  const key = await getAttemptsKey(email)
+  const attempts = readAttempts()
+  const record = attempts[key]
+  const now = Date.now()
+
+  if (record && typeof record.lockedUntil === 'number' && record.lockedUntil > now) {
+    return { count: MAX_ATTEMPTS, lockedUntil: record.lockedUntil }
+  }
+
+  const lockExpired =
+    record &&
+    typeof record.lockedUntil === 'number' &&
+    record.lockedUntil > 0 &&
+    record.lockedUntil <= now
+  const previousCount =
+    record && typeof record.count === 'number' && !lockExpired
+      ? record.count
+      : 0
+  const count = previousCount + 1
+  const lockedUntil = count >= MAX_ATTEMPTS ? now + LOCK_DURATION_MS : 0
+
+  attempts[key] = { count, lockedUntil }
+  writeAttempts(attempts)
+
+  return { count, lockedUntil }
+}
+
+async function clearFailedAttempts(email) {
+  const key = await getAttemptsKey(email)
+  const attempts = readAttempts()
+  if (!(key in attempts)) return
+  delete attempts[key]
+  writeAttempts(attempts)
+}
+
+async function authenticate(values) {
+  if (!globalThis.crypto?.subtle) {
+    throw new Error('Tu navegador no permite verificar los datos. Usa un navegador actualizado.')
+  }
+
+  const emailHash = await digestBase64(normalizeEmail(values.email))
+  const user = readUsers().find((candidate) => candidate.emailHash === emailHash)
+
+  const salt = user ? base64ToBytes(user.salt) : new Uint8Array(16)
+  const iterations = Number.isFinite(user?.iterations) ? user.iterations : PBKDF2_ITERATIONS
+  const passwordKey = await derivePasswordKey(values.password, salt, iterations)
+  const authHash = await digestBase64(passwordKey)
+
+  if (!user || !safeEqual(authHash, user.authHash)) return null
+
+  try {
+    const aesKey = await crypto.subtle.importKey(
+      'raw',
+      passwordKey,
+      { name: 'AES-GCM' },
+      false,
+      ['decrypt'],
+    )
+    const decrypted = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv: base64ToBytes(user.iv) },
+      aesKey,
+      base64ToBytes(user.profile),
+    )
+    const profile = JSON.parse(decoder.decode(decrypted))
+    return { id: user.id, ...profile, rol: normalizarRol(profile.rol) }
+  } catch {
+    return null
+  }
+}
+
+function formatRemaining(milliseconds) {
+  const totalSeconds = Math.max(1, Math.ceil(milliseconds / 1000))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+
+  if (minutes <= 0) return `${seconds} s`
+  return `${minutes} min ${String(seconds).padStart(2, '0')} s`
+}
 
 function Login({ onLoggedIn, onGoToRegister }) {
   const [form, setForm] = useState({ email: '', password: '' })
@@ -11,9 +205,19 @@ function Login({ onLoggedIn, onGoToRegister }) {
   const [showPassword, setShowPassword] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  const isFormValid = FIELDS.every(
-    (name) => !getLoginFieldError(name, form[name]),
-  )
+  useEffect(() => {
+    if (!lockUntil) return undefined
+
+    const intervalId = window.setInterval(() => {
+      const current = Date.now()
+      setNow(current)
+      if (current >= lockUntil) setLockUntil(0)
+    }, 1000)
+
+    return () => window.clearInterval(intervalId)
+  }, [lockUntil])
+
+  const isFormValid = isLoginFormValid(form) && !isLocked
 
   function handleChange(event) {
     const { name, value } = event.target
@@ -40,11 +244,7 @@ function Login({ onLoggedIn, onGoToRegister }) {
     event.preventDefault()
     setFormError('')
 
-    const nextErrors = {}
-    for (const name of FIELDS) {
-      const error = getLoginFieldError(name, form[name])
-      if (error) nextErrors[name] = error
-    }
+    const nextErrors = validateLoginForm(form)
     setErrors(nextErrors)
 
     if (Object.keys(nextErrors).length > 0) return

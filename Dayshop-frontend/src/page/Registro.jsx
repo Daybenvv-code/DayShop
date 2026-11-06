@@ -1,17 +1,123 @@
 import { useRef, useState } from 'react'
 import {
-  ApiError,
-  checkEmailAvailability,
-  registerUser,
-} from '../data/authApi.js'
-import {
-  getRegistrationFieldError,
-  MIN_PASSWORD_LENGTH,
-  normalizeEmail,
-  REGISTRATION_FIELDS,
-} from '../../shared/validation.js'
+  getFieldError,
+  isRegistroFormValid,
+  validateRegistroForm,
+} from '../utils/HU-2Registro.js'
+import { ROL_CLIENTE, USERS_STORAGE_KEY } from '../data/usuarios.js'
 
-const FIELDS = REGISTRATION_FIELDS
+const PBKDF2_ITERATIONS = 210_000
+const encoder = new TextEncoder()
+
+function normalizeEmail(value) {
+  return value.trim().toLowerCase()
+}
+
+function bytesToBase64(bytes) {
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary)
+}
+
+async function digestBase64(value) {
+  const data = typeof value === 'string' ? encoder.encode(value) : value
+  const digest = await crypto.subtle.digest('SHA-256', data)
+  return bytesToBase64(new Uint8Array(digest))
+}
+
+async function derivePasswordKey(password, salt, iterations) {
+  const baseKey = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(password),
+    'PBKDF2',
+    false,
+    ['deriveBits'],
+  )
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', salt, iterations, hash: 'SHA-256' },
+    baseKey,
+    256,
+  )
+  return new Uint8Array(bits)
+}
+
+function readUsers() {
+  try {
+    const raw = localStorage.getItem(USERS_STORAGE_KEY)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed)
+      ? parsed.filter((user) => user && typeof user.emailHash === 'string')
+      : []
+  } catch {
+    return []
+  }
+}
+
+async function isEmailAvailable(email) {
+  const emailHash = await digestBase64(normalizeEmail(email))
+  return !readUsers().some((user) => user.emailHash === emailHash)
+}
+
+async function registerUser(values) {
+  if (!globalThis.crypto?.subtle) {
+    throw new Error('Tu navegador no permite cifrar los datos. Usa un navegador actualizado.')
+  }
+
+  const normalizedEmail = normalizeEmail(values.email)
+  const emailHash = await digestBase64(normalizedEmail)
+
+  if (readUsers().some((user) => user.emailHash === emailHash)) {
+    const error = new Error('Este correo ya está registrado.')
+    error.code = 'EMAIL_TAKEN'
+    throw error
+  }
+
+  const salt = crypto.getRandomValues(new Uint8Array(16))
+  const passwordKey = await derivePasswordKey(values.password, salt, PBKDF2_ITERATIONS)
+  const authHash = await digestBase64(passwordKey)
+  const aesKey = await crypto.subtle.importKey(
+    'raw',
+    passwordKey,
+    { name: 'AES-GCM' },
+    false,
+    ['encrypt'],
+  )
+  const iv = crypto.getRandomValues(new Uint8Array(12))
+  const profile = {
+    nombreCompleto: values.nombreCompleto.trim(),
+    email: normalizedEmail,
+    telefono: values.telefono.trim(),
+    rol: ROL_CLIENTE,
+  }
+  const encryptedProfile = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    aesKey,
+    encoder.encode(JSON.stringify(profile)),
+  )
+
+  const user = {
+    id: crypto.randomUUID?.() ?? `user-${Date.now()}`,
+    emailHash,
+    salt: bytesToBase64(salt),
+    iterations: PBKDF2_ITERATIONS,
+    authHash,
+    iv: bytesToBase64(iv),
+    profile: bytesToBase64(new Uint8Array(encryptedProfile)),
+    createdAt: new Date().toISOString(),
+  }
+
+  const users = readUsers()
+  users.push(user)
+
+  try {
+    localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users))
+  } catch {
+    throw new Error('No se pudo guardar la cuenta en este navegador.')
+  }
+
+  return { id: user.id, ...profile }
+}
 
 function FormField({
   id,
@@ -83,9 +189,7 @@ function Registro({ onRegistered, onGoToLogin }) {
   const [formError, setFormError] = useState('')
   const latestEmail = useRef('')
 
-  const isFormValid =
-    FIELDS.every((name) => !getRegistrationFieldError(name, form[name])) &&
-    !emailTaken
+  const isFormValid = isRegistroFormValid(form) && !emailTaken
 
   function handleChange(event) {
     const { name, value } = event.target
@@ -135,11 +239,7 @@ function Registro({ onRegistered, onGoToLogin }) {
     event.preventDefault()
     setFormError('')
 
-    const nextErrors = {}
-    for (const name of FIELDS) {
-      const error = getRegistrationFieldError(name, form[name])
-      if (error) nextErrors[name] = error
-    }
+    const nextErrors = validateRegistroForm(form)
     setErrors(nextErrors)
 
     if (Object.keys(nextErrors).length > 0) return

@@ -1,14 +1,18 @@
 import { useState } from 'react'
 import { agregarAlCarrito, useCarrito } from '../../data/carrito.js'
 import {
-  esProductoActivo,
   formatearPrecio,
   obtenerCategoria,
 } from '../../data/productos.js'
+import { obtenerEstadoStock } from '../../utils/HU-3Catalogo.js'
 
 function ProductoCard({ producto, onSelect }) {
-  const activo = esProductoActivo(producto)
-  const disponible = activo && producto.stock > 0
+  const {
+    activo,
+    disponible,
+    etiqueta: etiquetaStock,
+    detalle: detalleStock,
+  } = obtenerEstadoStock(producto)
   const categoria = obtenerCategoria(producto.categoria)
   const carrito = useCarrito()
   const [error, setError] = useState('')
@@ -61,7 +65,7 @@ function ProductoCard({ producto, onSelect }) {
                 : 'bg-red-100 text-red-700',
             ].join(' ')}
           >
-            {!activo ? 'No disponible' : disponible ? 'Disponible' : 'Agotado'}
+            {etiquetaStock}
           </span>
         </div>
 
@@ -86,11 +90,7 @@ function ProductoCard({ producto, onSelect }) {
             </p>
           </div>
           <span className="text-xs font-bold text-indigo-600">
-            {!activo
-              ? 'No disponible'
-              : disponible
-                ? `${producto.stock} en stock`
-                : 'Sin stock'}
+            {detalleStock}
           </span>
         </div>
 
