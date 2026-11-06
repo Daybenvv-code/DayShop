@@ -1,0 +1,10 @@
+{
+  "scripts": {
+    "test": "cd Dayshop-frontend && npm test",
+    "lint": "cd Dayshop-frontend && npm run lint",
+    "build": "cd Dayshop-frontend && npm run build"
+  },
+  "devDependencies": {
+    "vitest": "^5.1.0"
+  }
+}
