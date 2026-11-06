@@ -1,51 +1,16 @@
 import { useRef, useState } from 'react'
+import {
+  getFieldError,
+  isRegistroFormValid,
+  validateRegistroForm,
+} from '../utils/HU-2Registro.js'
 import { ROL_CLIENTE, USERS_STORAGE_KEY } from '../data/usuarios.js'
 
 const PBKDF2_ITERATIONS = 210_000
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
-const NAME_PATTERN = /^[\p{L}\s.'-]+$/u
-const PHONE_PATTERN = /^\+?[\d\s()-]{7,20}$/
-const FIELDS = ['nombreCompleto', 'email', 'telefono', 'password']
 const encoder = new TextEncoder()
 
 function normalizeEmail(value) {
   return value.trim().toLowerCase()
-}
-
-function getFieldError(name, value) {
-  const trimmed = value.trim()
-
-  if (name === 'nombreCompleto') {
-    if (!trimmed) return 'El nombre completo es obligatorio.'
-    if (trimmed.length < 3) return 'Ingresa al menos 3 caracteres.'
-    if (!NAME_PATTERN.test(trimmed)) {
-      return 'Usa solo letras, espacios, puntos, guiones o apóstrofes.'
-    }
-    return ''
-  }
-
-  if (name === 'email') {
-    if (!trimmed) return 'El correo electrónico es obligatorio.'
-    if (!EMAIL_PATTERN.test(trimmed)) return 'Ingresa un correo electrónico válido.'
-    return ''
-  }
-
-  if (name === 'telefono') {
-    if (!trimmed) return 'El teléfono es obligatorio.'
-    const digits = trimmed.replace(/\D/g, '')
-    if (!PHONE_PATTERN.test(trimmed) || digits.length < 7 || digits.length > 15) {
-      return 'Ingresa un teléfono válido de 7 a 15 dígitos.'
-    }
-    return ''
-  }
-
-  if (name === 'password') {
-    if (!value) return 'La contraseña es obligatoria.'
-    if (value.length < 12) return 'La contraseña debe tener al menos 12 caracteres.'
-    return ''
-  }
-
-  return ''
 }
 
 function bytesToBase64(bytes) {
@@ -224,8 +189,7 @@ function Registro({ onRegistered, onGoToLogin }) {
   const [formError, setFormError] = useState('')
   const latestEmail = useRef('')
 
-  const isFormValid =
-    FIELDS.every((name) => !getFieldError(name, form[name])) && !emailTaken
+  const isFormValid = isRegistroFormValid(form) && !emailTaken
 
   function handleChange(event) {
     const { name, value } = event.target
@@ -270,11 +234,7 @@ function Registro({ onRegistered, onGoToLogin }) {
     event.preventDefault()
     setFormError('')
 
-    const nextErrors = {}
-    for (const name of FIELDS) {
-      const error = getFieldError(name, form[name])
-      if (error) nextErrors[name] = error
-    }
+    const nextErrors = validateRegistroForm(form)
     setErrors(nextErrors)
 
     if (Object.keys(nextErrors).length > 0) return

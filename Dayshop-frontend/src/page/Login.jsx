@@ -1,38 +1,24 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  getFieldError,
+  isLoginFormValid,
+  validateLoginForm,
+} from '../utils/HU-1Login.js'
+import {
   USERS_STORAGE_KEY,
   normalizarRol,
 } from '../data/usuarios.js'
 
 const ATTEMPTS_STORAGE_KEY = 'dayshop:login-attempts:v1'
 const PBKDF2_ITERATIONS = 210_000
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
 const MAX_ATTEMPTS = 5
 const LOCK_DURATION_MS = 15 * 60 * 1000
 const GENERIC_ERROR = 'Correo o contraseña incorrectos.'
-const FIELDS = ['email', 'password']
 const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 
 function normalizeEmail(value) {
   return value.trim().toLowerCase()
-}
-
-function getFieldError(name, value) {
-  if (name === 'email') {
-    const trimmed = value.trim()
-    if (!trimmed) return 'El correo electrónico es obligatorio.'
-    if (!EMAIL_PATTERN.test(trimmed)) return 'Ingresa un correo electrónico válido.'
-    return ''
-  }
-
-  if (name === 'password') {
-    if (!value) return 'La contraseña es obligatoria.'
-    if (value.length < 12) return 'La contraseña debe tener al menos 12 caracteres.'
-    return ''
-  }
-
-  return ''
 }
 
 function bytesToBase64(bytes) {
@@ -142,8 +128,13 @@ async function registerFailedAttempt(email) {
     return { count: MAX_ATTEMPTS, lockedUntil: record.lockedUntil }
   }
 
+  const lockExpired =
+    record &&
+    typeof record.lockedUntil === 'number' &&
+    record.lockedUntil > 0 &&
+    record.lockedUntil <= now
   const previousCount =
-    record && typeof record.count === 'number' && !(record.lockedUntil <= now)
+    record && typeof record.count === 'number' && !lockExpired
       ? record.count
       : 0
   const count = previousCount + 1
@@ -231,8 +222,7 @@ function Login({ onLoggedIn, onGoToRegister }) {
     return () => window.clearInterval(intervalId)
   }, [lockUntil])
 
-  const isFormValid =
-    FIELDS.every((name) => !getFieldError(name, form[name])) && !isLocked
+  const isFormValid = isLoginFormValid(form) && !isLocked
 
   function handleChange(event) {
     const { name, value } = event.target
@@ -276,11 +266,7 @@ function Login({ onLoggedIn, onGoToRegister }) {
     event.preventDefault()
     setFormError('')
 
-    const nextErrors = {}
-    for (const name of FIELDS) {
-      const error = getFieldError(name, form[name])
-      if (error) nextErrors[name] = error
-    }
+    const nextErrors = validateLoginForm(form)
     setErrors(nextErrors)
 
     if (Object.keys(nextErrors).length > 0) return
