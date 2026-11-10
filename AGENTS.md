@@ -28,7 +28,7 @@ Verifica los cambios con `npm run lint`, `npm test` y `npm run build`.
 ## Diseño centrado en las personas
 
 Antes de crear o modificar pantallas, lee las personas y sus necesidades en
-`Dayshop-frontend/src/Personas.md` y diseña pensando en ellas:
+`Personas.md` y diseña pensando en ellas:
 
 - **Carlos Mendoza (cliente / comprador frecuente):** prioriza rapidez (catálogo en menos de
   2 segundos), pocos pasos para comprar, carrito dinámico sin recargar, buscador intuitivo,
