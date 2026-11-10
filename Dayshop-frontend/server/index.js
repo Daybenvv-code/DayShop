@@ -1,7 +1,7 @@
 import { createReadStream } from 'node:fs'
 import { stat } from 'node:fs/promises'
 import { createServer } from 'node:http'
-import { dirname, extname, join, resolve } from 'node:path'
+import { dirname, extname, join, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { apiHandler } from './app.js'
 
@@ -49,7 +49,9 @@ function sendFile(req, res, filePath) {
 async function resolveStaticFile(pathname) {
   const candidate = resolve(DIST_DIR, `.${pathname}`)
 
-  if (!candidate.startsWith(DIST_DIR)) return null
+  if (candidate !== DIST_DIR && !candidate.startsWith(DIST_DIR + sep)) {
+    return null
+  }
 
   try {
     const info = await stat(candidate)

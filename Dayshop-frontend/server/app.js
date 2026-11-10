@@ -273,7 +273,7 @@ function registerFailedLogin(email) {
     record && !hasExpiredLock(record, now) ? Number(record.count) || 0 : 0
   const count = previousCount + 1
   const lockedUntil = count >= MAX_LOGIN_ATTEMPTS ? now + LOGIN_LOCK_MS : 0
-  const next = { count, lockedUntil }
+  const next = { count, lockedUntil, actualizadoEn: now }
 
   loginAttempts.set(email, next)
   return next
@@ -1237,10 +1237,14 @@ async function routeRequest(req, res, url) {
 }
 
 export async function apiHandler(req, res, next) {
-  const url = new URL(
-    req.url,
-    `http://${req.headers.host || 'localhost'}`,
-  )
+  let url
+
+  try {
+    url = new URL(req.url, `http://${req.headers.host || 'localhost'}`)
+  } catch {
+    sendJson(res, 400, { message: 'La solicitud no es válida.' })
+    return
+  }
 
   if (!url.pathname.startsWith('/api/')) {
     if (typeof next === 'function') {
@@ -1282,7 +1286,12 @@ setInterval(() => {
   }
 
   for (const [email, record] of loginAttempts) {
-    if (hasExpiredLock(record, now)) {
+    const bloqueoExpirado = hasExpiredLock(record, now)
+    const sinActividad =
+      !record.lockedUntil &&
+      now - (Number(record.actualizadoEn) || 0) > LOGIN_LOCK_MS
+
+    if (bloqueoExpirado || sinActividad) {
       loginAttempts.delete(email)
     }
   }

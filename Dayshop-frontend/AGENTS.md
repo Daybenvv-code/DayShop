@@ -1,46 +1,60 @@
 # AGENTS.md
 
-## Project
+## Proyecto
 
-Dayshop frontend: a Vite 8 + React 19 single-page app using Tailwind CSS v4.
-Entry point is `src/main.jsx` -> `src/App.jsx`. There is no router, state
-library, or test suite yet. A dependency-free Node API lives in `server/` and
-is mounted into the Vite dev and preview servers by `vite.config.js`.
-`README.md` is the stock Vite template and does not describe this app.
+Dayshop frontend: una aplicación de página única (SPA) hecha con Vite 8 + React 19 y
+Tailwind CSS v4. El punto de entrada es `src/main.jsx` -> `src/App.jsx`. No hay router ni
+librería de estado. Una API Node sin dependencias vive en `server/` y se monta en los
+servidores de desarrollo y preview de Vite mediante `vite.config.js`. `README.md` es la
+plantilla estándar de Vite y no describe esta aplicación.
 
-## Commands
+## Comandos
 
-- `npm install` — use npm; `package-lock.json` is the only lockfile.
-- `npm run dev` — Vite dev server with HMR.
-- `npm run lint` — ESLint flat config, checks `**/*.{js,jsx}` only.
-- `npm run build` — production build to `dist/` (gitignored).
-- `npm run preview` — serve the production build (API included).
-- `npm start` — standalone Node server for the API and `dist/` (run `npm run build` first).
+- `npm install` — usa npm; `package-lock.json` es el único lockfile.
+- `npm run dev` — servidor de desarrollo de Vite con HMR.
+- `npm run lint` — ESLint con configuración flat; revisa solo `**/*.{js,jsx}`.
+- `npm test` — ejecuta las pruebas con Vitest (`src/utils/*.test.js` y `server/*.test.js`).
+- `npm run build` — build de producción en `dist/` (ignorado por Git).
+- `npm run preview` — sirve el build de producción (incluye la API).
+- `npm start` — servidor Node independiente para la API y `dist/` (ejecuta `npm run build` antes).
 
-No test runner is configured; verify changes with `npm run lint` and
-`npm run build` instead of guessing a test command.
+Verifica los cambios con `npm run lint`, `npm test` y `npm run build`.
 
-## Styling
+## Diseño centrado en las personas
 
-- Tailwind v4 is wired through the `@tailwindcss/vite` plugin in
-  `vite.config.js`. There is no `tailwind.config.js`; the global import is
-  `@import "tailwindcss";` in `src/index.css`.
-- `src/App.css` holds component styles and uses nested CSS.
-- Imported assets from `src/assets` are bundled; files in `public/` are served
-  from the site root (e.g. `/icons.svg`, `/favicon.svg`).
+Antes de crear o modificar pantallas, lee las personas y sus necesidades en
+`src/FichaUser.md` y diseña pensando en ellas:
 
-## Gotchas
+- **Carlos Mendoza (cliente / comprador frecuente):** prioriza rapidez (catálogo en menos de
+  2 segundos), pocos pasos para comprar, carrito dinámico sin recargar, buscador intuitivo,
+  claridad total en estados/tiempos de entrega y costos de envío, y una interfaz responsive
+  para móvil y laptop.
+- **Sofía Vargas (administradora / gestora del negocio):** prioriza un panel ordenado y rápido
+  para actualizar stock, precios y productos, monitorear pedidos y mantener la plataforma
+  segura y funcional.
 
-- JavaScript/JSX only: TypeScript is not configured, and ESLint does not
-  typecheck.
-- Backend user accounts are stored in `server/data/users.json`, the product
-  catalog in `server/data/productos.json`, and per-user shipping addresses in
-  `server/data/direcciones.json` (all gitignored). Shared user validation lives
-  in `shared/validation.js`; shared catalog data, product normalization, and
-  product validation live in `shared/catalog.js`; shared address validation and
-  shipping messages live in `shared/direcciones.js` and `shared/mensajes.js`,
-  and run on both client and server.
-- The Git repository root is the parent directory
-  `C:\Users\ARDEY\Documents`, which also contains unrelated folders. Running Git
-  from this folder sees those files, so stage explicit paths and never
-  `git add .` from here.
+Cada cambio de UI debe justificarse en al menos una de esas necesidades (por ejemplo: menos
+clics, menos espera, información más clara o gestión más ágil).
+
+## Estilos
+
+- Tailwind v4 se integra mediante el plugin `@tailwindcss/vite` en `vite.config.js`. No hay
+  `tailwind.config.js`; el import global es `@import "tailwindcss";` en `src/index.css`.
+- `src/App.css` contiene estilos de componentes y usa CSS anidado.
+- Los assets importados desde `src/assets` se empaquetan; los archivos de `public/` se sirven
+  desde la raíz del sitio (por ejemplo, `/icons.svg`, `/favicon.svg`).
+
+## Advertencias
+
+- Solo JavaScript/JSX: TypeScript no está configurado y ESLint no verifica tipos.
+- Las cuentas de usuario se guardan en `server/data/users.json`, el catálogo en
+  `server/data/productos.json` y las direcciones de envío por usuario en
+  `server/data/direcciones.json` (todos ignorados por Git). La validación compartida de
+  usuarios vive en `shared/validation.js`; los datos, normalización y validación del catálogo
+  en `shared/catalog.js`; la validación de direcciones y los mensajes de envío en
+  `shared/direcciones.js` y `shared/mensajes.js`, y se ejecutan tanto en cliente como en
+  servidor.
+- La raíz real del repositorio Git es el directorio padre
+  `C:\Users\ARDEY\Documents`, que también contiene carpetas no relacionadas. Al ejecutar Git
+  desde esta carpeta se ven esos archivos, así que agrega rutas explícitas y nunca uses
+  `git add .` desde aquí.
